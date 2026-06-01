@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Run Debugmaster healthmaps across the local marketdeck/tool repos found in this workspace.
+set -euo pipefail
+
+repos=(
+  "/Users/master/projects/superweb"
+  "/Users/master/projects/mdviewy"
+  "/Users/master/projects/docs/languages-2026"
+  "/Users/master/projects/WINvestmentMAXIM"
+  "/Users/master/projects/universalui"
+  "/Users/master/projects/supermax"
+  "/Users/master/projects/ghmax"
+  "/Users/master/projects/4eae67f7bd524f33101a54ebc81ab43e60e5035e"
+  "/Users/master/projects/primequellen-superweb"
+  "/Users/master/projects/WINvestmentMAX"
+  "/Users/master/projects/awesome-languages-2026"
+  "/Users/master/projects/grepgod"
+  "/Users/master/projects/supersynergycrmpro"
+)
+
+printf 'repo\tstatus\tdirty\tchanged_files\timpact\tpackages\n'
+for repo in "${repos[@]}"; do
+  [[ -d "$repo/.git" ]] || continue
+  grepgod healthmap "$repo" >/dev/null
+  jq -r --arg repo "$repo" \
+    '[$repo, .status, (.git.dirty|tostring), (.git.changed_files|length|tostring), (.impact.score|tostring), (.monorepo.package_count|tostring)] | @tsv' \
+    "$repo/.grepgod/healthmap.json"
+done

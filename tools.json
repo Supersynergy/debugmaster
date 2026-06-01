@@ -1,0 +1,135 @@
+{
+  "created_from": "cmux-vault debugmaster session",
+  "date": "2026-06-01",
+  "local_tools": [
+    {
+      "name": "grepgod",
+      "kind": "local_cli",
+      "path": "/Users/master/.local/bin/grepgod",
+      "source_path": "/Users/master/projects/grepgod",
+      "remote": "https://git.marketdeck.io/Supersynergy/grepgod.git",
+      "purpose": "Adaptive search router, code maps, riskmap, healthmap, debug helper"
+    },
+    {
+      "name": "ghmax",
+      "kind": "local_cli",
+      "path": "/Users/master/.local/bin/ghmax",
+      "source_path": "/Users/master/projects/ghmax",
+      "purpose": "GitHub repository and code pattern mining"
+    },
+    {
+      "name": "codegraph",
+      "kind": "local_cli",
+      "path": "/Users/master/.local/bin/codegraph",
+      "purpose": "Local code graph generation/querying"
+    },
+    {
+      "name": "synxp",
+      "kind": "local_cli",
+      "path": "/Users/master/.local/bin/synxp",
+      "purpose": "Synapse recall search"
+    },
+    {
+      "name": "synx",
+      "kind": "local_cli",
+      "path": "/Users/master/.local/bin/synx",
+      "purpose": "Synapse fact/decision write and find"
+    }
+  ],
+  "grepgod_runtime_scripts": [
+    "/Users/master/.claude/bin/grepgod",
+    "/Users/master/.claude/bin/grepgod-mapkit.py",
+    "/Users/master/.claude/bin/grepgod-analyze.py",
+    "/Users/master/.claude/bin/grepgod-ask",
+    "/Users/master/.claude/bin/grepgod-debug",
+    "/Users/master/.claude/bin/grepgod-selftest",
+    "/Users/master/.claude/bin/grepgod-chain-map",
+    "/Users/master/.claude/bin/grepgod-chain-funcmap",
+    "/Users/master/.claude/bin/grepgod-chain-depmap",
+    "/Users/master/.claude/bin/grepgod-chain-apimap",
+    "/Users/master/.claude/bin/grepgod-chain-dbmap",
+    "/Users/master/.claude/bin/grepgod-chain-riskmap",
+    "/Users/master/.claude/bin/grepgod-chain-healthmap",
+    "/Users/master/.claude/bin/grepgod-chain-flowmap",
+    "/Users/master/.claude/bin/grepgod-chain-security"
+  ],
+  "target_repos": [
+    {
+      "name": "mdviewy",
+      "path": "/Users/master/projects/mdviewy",
+      "gitea": "https://git.marketdeck.io/Supersynergy/mdviewy.git",
+      "github": "https://github.com/Supersynergy/mdviewy",
+      "head_seen": "552cf051"
+    },
+    {
+      "name": "cmux-vault",
+      "path": "/Users/master/projects/cmux-vault"
+    }
+  ],
+  "marketdeck_scan": [
+    {"path": "/Users/master/projects/superweb", "status": "DIRTY", "dirty_files": 2, "impact": 8, "packages": 7},
+    {"path": "/Users/master/projects/mdviewy", "status": "ATTENTION", "dirty_files": 96, "impact": 837, "packages": 13},
+    {"path": "/Users/master/projects/docs/languages-2026", "status": "FRESH", "dirty_files": 0, "impact": 0, "packages": 0},
+    {"path": "/Users/master/projects/WINvestmentMAXIM", "status": "DIRTY", "dirty_files": 1, "impact": 4, "packages": 15, "full_map": true},
+    {"path": "/Users/master/projects/universalui", "status": "FRESH", "dirty_files": 0, "impact": 0, "packages": 0},
+    {"path": "/Users/master/projects/supermax", "status": "ATTENTION", "dirty_files": 31, "impact": 151, "packages": 21},
+    {"path": "/Users/master/projects/ghmax", "status": "ATTENTION", "dirty_files": 3, "impact": 88, "packages": 0},
+    {"path": "/Users/master/projects/4eae67f7bd524f33101a54ebc81ab43e60e5035e", "status": "ATTENTION", "dirty_files": 2, "impact": 15, "packages": 0},
+    {"path": "/Users/master/projects/primequellen-superweb", "status": "FRESH", "dirty_files": 0, "impact": 0, "packages": 0},
+    {"path": "/Users/master/projects/WINvestmentMAX", "status": "DIRTY", "dirty_files": 1, "impact": 4, "packages": 1},
+    {"path": "/Users/master/projects/awesome-languages-2026", "status": "FRESH", "dirty_files": 0, "impact": 0, "packages": 0},
+    {"path": "/Users/master/projects/grepgod", "status": "ATTENTION", "dirty_files": 18, "impact": 196, "packages": 0},
+    {"path": "/Users/master/projects/supersynergycrmpro", "status": "ATTENTION", "dirty_files": 46, "impact": 322, "packages": 16, "full_map": true}
+  ],
+  "github_repos_found": [
+    {
+      "name": "davidfraser/pyan",
+      "url": "https://github.com/davidfraser/pyan",
+      "stars_seen": 712,
+      "language": "Python",
+      "concept": "Static Python call dependency graph"
+    },
+    {
+      "name": "mamuz/PhpDependencyAnalysis",
+      "url": "https://github.com/mamuz/PhpDependencyAnalysis",
+      "stars_seen": 574,
+      "language": "PHP",
+      "concept": "Dependency graph violation detection"
+    },
+    {
+      "name": "xnuinside/codegraph",
+      "url": "https://github.com/xnuinside/codegraph",
+      "stars_seen": 477,
+      "language": "Python",
+      "concept": "Static dependency graph and visualization"
+    },
+    {
+      "name": "Trismegiste/Mondrian",
+      "url": "https://github.com/Trismegiste/Mondrian",
+      "stars_seen": 393,
+      "language": "PHP",
+      "concept": "Graph-theory static analysis"
+    },
+    {
+      "name": "clay-good/OpenLore",
+      "url": "https://github.com/clay-good/OpenLore",
+      "stars_seen": 151,
+      "language": "TypeScript",
+      "concept": "Architectural memory, graph preflight, drift detection"
+    },
+    {
+      "name": "brandondocusen/CntxtPY",
+      "url": "https://github.com/brandondocusen/CntxtPY",
+      "stars_seen": 112,
+      "language": "Python",
+      "concept": "LLM context graph and codebase compression"
+    },
+    {
+      "name": "Lekssays/codebadger",
+      "url": "https://github.com/Lekssays/codebadger",
+      "stars_seen": 109,
+      "language": "Python",
+      "concept": "MCP server using Joern Code Property Graph"
+    }
+  ]
+}
