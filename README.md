@@ -10,7 +10,7 @@ Use this folder as the first stop when you need to scan an existing project, und
 debugmaster/bin/debugmaster init
 debugmaster/bin/debugmaster all . --timeout 60
 debugmaster/bin/debugmaster flows
-debugmaster/bin/debugmaster batch --root /Users/master/machinelearning --limit 5 --random --no-security --no-checks --no-full-map
+debugmaster/bin/debugmaster batch --root /Users/master/machinelearning --limit 5 --random
 debugmaster/bin/debugmaster mine . --query "repo healthmap codegraph debugging"
 debugmaster/bin/debugmaster autofix .
 debugmaster/bin/debugmaster init-ci .
@@ -78,6 +78,7 @@ ghmax --repos "code graph static analysis" --stars-min 100 -n 8 --sort stars
 ```bash
 debugmaster/install.sh --link
 debugmaster all . --timeout 60
+debugmaster all . --check-profile deep --security --full-map --timeout 120
 debugmaster/bin/debugmaster engines
 debugmaster/bin/debugmaster flows --json
 debugmaster/bin/debugmaster batch --root /path/to/repos --limit 5 --random
@@ -123,6 +124,7 @@ Includes:
 - optional safe autofix dry-run/apply mode via `debugmaster autofix`
 - batch reports for many repos via `debugmaster batch`
 - GitHub pull-request report workflow template via `debugmaster init-ci`
+- fail-safe performance defaults: `--check-profile safe`, security off unless `--security`, full map off unless `--full-map`, bounded scans via `DEBUGMASTER_MAX_SCAN_FILES`
 - clear `PASS` / `WARN` / `FAIL` verdict
 - next 5 fixes for Codex/Claude
 

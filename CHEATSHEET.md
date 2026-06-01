@@ -14,7 +14,7 @@ Optional depth tools: `grepgod`, `ghmax`, `rg`, `jq`, `semgrep`, `gitleaks`, `os
 ## One Repo
 
 ```bash
-debugmaster all . --timeout 120
+debugmaster all . --timeout 60
 ```
 
 Outputs:
@@ -27,8 +27,16 @@ Use the JSON for automation and the AI brief for Codex/Claude handoff.
 
 ## Batch Repos
 
+Safe default:
+
 ```bash
-debugmaster batch --root /Users/master/machinelearning --limit 5 --random --no-security --no-checks --no-full-map
+debugmaster batch --root /Users/master/machinelearning --limit 5 --random
+```
+
+Deep mode:
+
+```bash
+debugmaster batch --root /Users/master/machinelearning --limit 5 --random --check-profile deep --security --full-map --timeout 120
 ```
 
 Outputs:
@@ -84,13 +92,13 @@ It does not revert files.
 
 ```bash
 docker run --rm -v "$PWD/debugmaster:/debugmaster" -w /debugmaster ubuntu:26.04 \
-  bash -lc 'apt-get update && apt-get install -y python3 git jq && python3 bin/debugmaster init && python3 bin/debugmaster all . --no-security --no-full-map --timeout 30'
+  bash -lc 'apt-get update && apt-get install -y python3 git jq && python3 bin/debugmaster init && python3 bin/debugmaster all . --timeout 30'
 ```
 
 ## Fast Agent Loop
 
 ```bash
-debugmaster all . --timeout 120
+debugmaster all . --timeout 60
 sed -n '1,180p' debugmaster/reports/$(basename "$PWD")/debugmaster-ai-brief.md
 debugmaster autofix .
 debugmaster flows
@@ -103,3 +111,19 @@ Fix order:
 3. high-impact dirty files
 4. stack-specific references
 5. monorepo boundary issues
+
+## Performance Safety
+
+Default mode is conservative:
+
+- `--check-profile safe`
+- no security scan unless `--security`
+- no Grepgod full map unless `--full-map`
+- max scanned files: `DEBUGMASTER_MAX_SCAN_FILES` or `120000`
+- max shellcheck files: `DEBUGMASTER_MAX_SHELLCHECK_FILES` or `40`
+
+Use deep mode only when you want slower proof:
+
+```bash
+debugmaster all . --check-profile deep --security --full-map --timeout 120
+```

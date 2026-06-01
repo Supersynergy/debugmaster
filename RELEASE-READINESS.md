@@ -24,6 +24,8 @@ It runs with only `python3` and `git`, then gets deeper when optional tools exis
 - Safe autofix dry-run/apply mode: `debugmaster autofix <repo> [--apply]`.
 - 64 language/framework stack matrix with official references.
 - 10 debug flows for repo truth, dirty impact, stack verification, security, frontend, native crash, backend trace, monorepo boundary, AI handoff, and no-grepgod fallback.
+- Performance-safe defaults: no security scan unless `--security`, no Grepgod full map unless `--full-map`, and `--check-profile safe` unless deeper checks are requested.
+- Bounded scanning via `DEBUGMASTER_MAX_SCAN_FILES` and bounded shellcheck file selection via `DEBUGMASTER_MAX_SHELLCHECK_FILES`.
 
 ## Linux Verification
 
@@ -48,6 +50,7 @@ Result:
 - Detected stacks: `3`.
 - Debug flows: `10`.
 - Confirmed fallback works without Grepgod, ghmax, rg, node, cargo, pytest, shellcheck, semgrep, gitleaks, or osv-scanner.
+- Re-verified after failsafe changes: `PASS`, profile `safe`, scan not truncated, checks `0`.
 
 ## Local Verification
 
@@ -125,18 +128,56 @@ Interpretation:
 
 Debugmaster correctly generated actionable reports for random real repositories. The FAIL verdicts are repo/test-environment findings, not Debugmaster crashes.
 
+## Machine Learning 5-Repo Safe Batch
+
+Command:
+
+```bash
+DEBUGMASTER_NO_GREPGOD=1 debugmaster/bin/debugmaster batch \
+  --root /Users/master/machinelearning \
+  --limit 5 \
+  --random \
+  --out /tmp/debugmaster-machinelearning-5-safe \
+  --timeout 10
+```
+
+Aggregate output:
+
+- Reports written: `/tmp/debugmaster-machinelearning-5-safe`.
+- Repos scanned: `5`.
+- PASS: `5`.
+- FAIL: `0`.
+- WARN: `0`.
+
+Repos:
+
+| verdict | repo | checks | dirty |
+|---|---|---:|---:|
+| PASS | `m-bain__whisperX` | 1/1 | 0 |
+| PASS | `ml-explore__mlx-swift` | 1/1 | 0 |
+| PASS | `QuantConnect__Lean` | 1/1 | 0 |
+| PASS | `modelscope__ms-swift` | 1/1 | 0 |
+| PASS | `kserve__kserve` | 1/1 | 0 |
+
+Interpretation:
+
+The default safe profile avoids expensive deep test suites and uses cheap repo-health checks. Deep failures remain available with `--check-profile deep`, but the default no longer causes performance cliffs on random large repositories.
+
 ## Release Caveats
 
 - `debugmaster init-ci` assumes the target repository contains the `debugmaster/` folder. Repos that consume Debugmaster as a separate binary should adjust the workflow command path.
 - `autofix --apply` is intentionally conservative. It trims trailing whitespace in already-dirty text files and can run known formatter commands. It does not revert files.
-- Security scans are deeper when Grepgod, Semgrep, Gitleaks, and OSV Scanner are installed.
+- Security scans are opt-in via `--security` and are deeper when Grepgod, Semgrep, Gitleaks, and OSV Scanner are installed.
 - Ghmax repo search depends on ghmax's configured GitHub CLI path; pattern mining can still work without that repo-search path.
+- Deep build/test verification is opt-in via `--check-profile deep`; default `safe` avoids expensive test suites and marks timeouts/unavailable tools as warnings.
+- Timeouts and unavailable optional tools produce `WARN` instead of crashing the process.
 
 ## Go-To Commands
 
 ```bash
 debugmaster init
 debugmaster all . --timeout 120
+debugmaster all . --check-profile deep --security --full-map --timeout 120
 debugmaster autofix .
 debugmaster mine . --query "<stack> <failure> debugging"
 debugmaster batch --root /path/to/repos --limit 5 --random
