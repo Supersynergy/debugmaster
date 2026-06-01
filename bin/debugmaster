@@ -165,6 +165,90 @@ LANGUAGE_MATRIX = [
         "engines": ["adb logcat", "Android Studio Profiler", "Xcode debugger", "FLEX", "Flipper"],
     },
 ]
+STACK_REFERENCES = {
+    "Rust": ["https://doc.rust-lang.org/book/", "https://doc.rust-lang.org/cargo/", "https://doc.rust-lang.org/clippy/"],
+    "TypeScript": ["https://www.typescriptlang.org/docs/", "https://vitest.dev/guide/", "https://playwright.dev/docs/intro"],
+    "JavaScript": ["https://nodejs.org/en/learn", "https://developer.chrome.com/docs/devtools/", "https://vitest.dev/guide/"],
+    "Go": ["https://go.dev/doc/", "https://pkg.go.dev/github.com/go-delve/delve", "https://pkg.go.dev/net/http/pprof"],
+    "Python": ["https://docs.python.org/3/library/pdb.html", "https://docs.pytest.org/", "https://github.com/microsoft/debugpy"],
+    "Java": ["https://docs.oracle.com/en/java/", "https://docs.oracle.com/javacomponents/jmc-5-5/jfr-runtime-guide/", "https://visualvm.github.io/"],
+    "Kotlin": ["https://kotlinlang.org/docs/home.html", "https://developer.android.com/studio/debug", "https://docs.gradle.org/current/userguide/userguide.html"],
+    "C/C++": ["https://sourceware.org/gdb/current/onlinedocs/gdb.html", "https://lldb.llvm.org/use/map.html", "https://clang.llvm.org/docs/AddressSanitizer.html"],
+    "C#/.NET": ["https://learn.microsoft.com/dotnet/core/tools/dotnet-test", "https://learn.microsoft.com/visualstudio/debugger/", "https://learn.microsoft.com/dotnet/core/diagnostics/"],
+    "PHP": ["https://xdebug.org/docs/", "https://phpunit.de/documentation.html", "https://blackfire.io/docs/"],
+    "Ruby": ["https://github.com/ruby/debug", "https://rspec.info/documentation/", "https://guides.rubyonrails.org/debugging_rails_applications.html"],
+    "Swift": ["https://www.swift.org/documentation/", "https://developer.apple.com/documentation/xcode/debugging", "https://developer.apple.com/tutorials/instruments"],
+    "Dart/Flutter": ["https://docs.flutter.dev/tools/devtools", "https://dart.dev/tools/dart-devtools", "https://docs.flutter.dev/testing"],
+    "Elixir": ["https://hexdocs.pm/iex/IEx.html", "https://hexdocs.pm/ex_unit/ExUnit.html", "https://hexdocs.pm/telemetry/"],
+    "Scala": ["https://docs.scala-lang.org/", "https://www.scala-sbt.org/documentation.html", "https://www.jetbrains.com/help/idea/debugging-scala-code.html"],
+    "R": ["https://adv-r.hadley.nz/debugging.html", "https://testthat.r-lib.org/", "https://rstudio.github.io/profvis/"],
+    "Shell": ["https://www.shellcheck.net/wiki/Home", "https://github.com/mvdan/sh", "https://www.gnu.org/software/bash/manual/"],
+    "SQL": ["https://www.postgresql.org/docs/current/using-explain.html", "https://www.postgresql.org/docs/current/pgstatstatements.html", "https://www.sqlite.org/eqp.html"],
+    "UI/Web": ["https://developer.chrome.com/docs/devtools/", "https://playwright.dev/docs/trace-viewer", "https://web.dev/measure/"],
+    "Mobile": ["https://developer.android.com/studio/debug", "https://developer.apple.com/documentation/xcode/debugging", "https://fbflipper.com/docs/"],
+}
+EXTRA_STACKS = [
+    {"language": "Astro", "markers": ["astro.config.mjs", "astro.config.ts", "astro.config.js"], "extensions": [".astro"], "checks": [["npm", "run", "astro:check"], ["npm", "run", "build"]], "engines": ["astro check", "Vite diagnostics", "Playwright", "Chrome DevTools"], "references": ["https://docs.astro.build/", "https://docs.astro.build/en/reference/cli-reference/", "https://docs.astro.build/en/guides/testing/"]},
+    {"language": "Next.js", "markers": ["next.config.js", "next.config.mjs", "next.config.ts"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["next build", "React DevTools", "Playwright", "Chrome DevTools Performance"], "references": ["https://nextjs.org/docs", "https://nextjs.org/docs/app/building-your-application/optimizing", "https://nextjs.org/docs/app/building-your-application/testing"]},
+    {"language": "React", "markers": ["vite.config.ts", "vite.config.js"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["React DevTools", "Profiler API", "Playwright", "Vitest"], "references": ["https://react.dev/learn", "https://react.dev/reference/react/Profiler", "https://react.dev/learn/react-developer-tools"]},
+    {"language": "Vue", "markers": ["vue.config.js", "nuxt.config.ts", "nuxt.config.js"], "extensions": [".vue"], "checks": [["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["Vue DevTools", "Nuxt DevTools", "Vitest", "Playwright"], "references": ["https://vuejs.org/guide/introduction.html", "https://devtools.vuejs.org/", "https://nuxt.com/docs"]},
+    {"language": "Svelte/SvelteKit", "markers": ["svelte.config.js", "svelte.config.ts"], "extensions": [".svelte"], "checks": [["npm", "run", "check"], ["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["svelte-check", "Svelte DevTools", "Vite diagnostics", "Playwright"], "references": ["https://svelte.dev/docs", "https://kit.svelte.dev/docs", "https://github.com/sveltejs/language-tools/tree/master/packages/svelte-check"]},
+    {"language": "Angular", "markers": ["angular.json"], "extensions": [".ts", ".html"], "checks": [["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["Angular DevTools", "ng test", "Chrome DevTools"], "references": ["https://angular.dev/tools/devtools", "https://angular.dev/guide/testing", "https://angular.dev/reference/configs/workspace-config"]},
+    {"language": "Remix", "markers": ["remix.config.js", "remix.config.mjs"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["Remix dev server", "React DevTools", "Playwright"], "references": ["https://remix.run/docs", "https://remix.run/docs/en/main/guides/testing"]},
+    {"language": "Vite", "markers": ["vite.config.ts", "vite.config.js", "vite.config.mjs"], "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["vite --debug", "Vitest", "Vite inspect", "Chrome DevTools"], "references": ["https://vite.dev/guide/", "https://vite.dev/guide/troubleshooting", "https://vitest.dev/guide/"]},
+    {"language": "Tailwind CSS", "markers": ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.mjs"], "extensions": [".css", ".tsx", ".jsx", ".astro", ".svelte", ".vue"], "checks": [["npm", "run", "build"]], "engines": ["Tailwind content scan", "Chrome CSS inspector", "Vite build"], "references": ["https://tailwindcss.com/docs", "https://tailwindcss.com/docs/detecting-classes-in-source-files"]},
+    {"language": "SolidStart", "markers": ["app.config.ts"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["Solid DevTools", "Vite diagnostics", "Playwright"], "references": ["https://docs.solidjs.com/", "https://docs.solidjs.com/solid-start"]},
+    {"language": "Qwik", "markers": ["qwik.config.ts", "vite.config.ts"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["Qwik optimizer", "Vite diagnostics", "Playwright"], "references": ["https://qwik.dev/docs/", "https://qwik.dev/docs/testing/"]},
+    {"language": "Zig", "markers": ["build.zig", "build.zig.zon"], "extensions": [".zig"], "checks": [["zig", "build", "test"]], "engines": ["zig test", "LLDB", "sanitizers"], "references": ["https://ziglang.org/documentation/master/", "https://ziglang.org/learn/"]},
+    {"language": "Haskell", "markers": ["stack.yaml", "cabal.project"], "extensions": [".hs", ".lhs"], "checks": [["cabal", "test"], ["stack", "test"]], "engines": ["GHCi", "Haskell Language Server", "eventlog/threadscope"], "references": ["https://www.haskell.org/documentation/", "https://downloads.haskell.org/ghc/latest/docs/users_guide/", "https://haskell-language-server.readthedocs.io/"]},
+    {"language": "OCaml", "markers": ["dune-project"], "extensions": [".ml", ".mli"], "checks": [["dune", "runtest"]], "engines": ["dune runtest", "OCaml debugger", "Merlin"], "references": ["https://ocaml.org/docs", "https://dune.readthedocs.io/", "https://github.com/ocaml/merlin"]},
+    {"language": "Clojure", "markers": ["deps.edn", "project.clj"], "extensions": [".clj", ".cljs", ".cljc"], "checks": [["clojure", "-M:test"], ["lein", "test"]], "engines": ["REPL", "Portal", "clj-kondo", "test.check"], "references": ["https://clojure.org/guides/getting_started", "https://cljdoc.org/d/clj-kondo/clj-kondo", "https://github.com/cognitect-labs/test.check"]},
+    {"language": "Erlang", "markers": ["rebar.config"], "extensions": [".erl", ".hrl"], "checks": [["rebar3", "eunit"], ["rebar3", "ct"]], "engines": ["Observer", "recon", "Common Test", "EUnit"], "references": ["https://www.erlang.org/doc/", "https://www.rebar3.org/docs/", "https://ferd.github.io/recon/"]},
+    {"language": "Lua", "markers": [".luacheckrc", "stylua.toml"], "extensions": [".lua"], "checks": [["busted"]], "engines": ["MobDebug", "busted", "LuaRocks test"], "references": ["https://www.lua.org/manual/5.4/", "https://lunarmodules.github.io/busted/", "https://github.com/mpeterv/luacheck"]},
+    {"language": "Perl", "markers": ["cpanfile", "Makefile.PL", "Build.PL"], "extensions": [".pl", ".pm", ".t"], "checks": [["prove", "-lr", "t"]], "engines": ["perl -d", "Devel::NYTProf", "prove"], "references": ["https://perldoc.perl.org/perldebug", "https://metacpan.org/pod/Devel::NYTProf", "https://perldoc.perl.org/prove"]},
+    {"language": "Julia", "markers": ["Project.toml", "Manifest.toml"], "extensions": [".jl"], "checks": [["julia", "--project=.", "-e", "using Pkg; Pkg.test()"]], "engines": ["Debugger.jl", "Profile", "Test"], "references": ["https://docs.julialang.org/", "https://github.com/JuliaDebug/Debugger.jl", "https://docs.julialang.org/en/v1/stdlib/Profile/"]},
+    {"language": "Nim", "markers": ["nim.cfg"], "extensions": [".nim", ".nims", ".nimble"], "checks": [["nimble", "test"]], "engines": ["nim c --debugger:native", "GDB/LLDB", "testament"], "references": ["https://nim-lang.org/documentation.html", "https://nim-lang.org/docs/nimc.html", "https://nim-lang.github.io/Nim/testament.html"]},
+    {"language": "Crystal", "markers": ["shard.yml"], "extensions": [".cr"], "checks": [["crystal", "spec"]], "engines": ["crystal spec", "LLDB", "crystal tool format"], "references": ["https://crystal-lang.org/reference/", "https://crystal-lang.org/reference/latest/guides/debugging.html"]},
+    {"language": "D", "markers": ["dub.json", "dub.sdl"], "extensions": [".d"], "checks": [["dub", "test"]], "engines": ["dub test", "GDB/LLDB", "DTrace/perf"], "references": ["https://dlang.org/spec/spec.html", "https://dub.pm/commandline", "https://wiki.dlang.org/Debuggers"]},
+    {"language": "Objective-C", "markers": ["Podfile"], "extensions": [".m", ".mm"], "checks": [["xcodebuild", "test"]], "engines": ["Xcode debugger", "LLDB", "Instruments"], "references": ["https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ProgrammingWithObjectiveC/", "https://developer.apple.com/documentation/xcode/debugging", "https://lldb.llvm.org/"]},
+    {"language": "Groovy/Gradle", "markers": ["build.gradle", "settings.gradle"], "extensions": [".groovy"], "checks": [["gradle", "test"]], "engines": ["Gradle build scans", "Spock", "JFR"], "references": ["https://docs.gradle.org/current/userguide/troubleshooting.html", "https://spockframework.org/spock/docs/", "https://groovy-lang.org/documentation.html"]},
+    {"language": "Fortran", "markers": ["fpm.toml"], "extensions": [".f90", ".f95", ".f03", ".f08", ".for"], "checks": [["fpm", "test"]], "engines": ["GDB", "Valgrind", "compiler bounds checks"], "references": ["https://fortran-lang.org/learn/", "https://fpm.fortran-lang.org/", "https://gcc.gnu.org/onlinedocs/gfortran/Debugging-Options.html"]},
+    {"language": "Pascal/Delphi", "markers": [], "extensions": [".pas", ".dpr"], "checks": [], "engines": ["Lazarus debugger", "Delphi debugger", "GDB"], "references": ["https://www.freepascal.org/docs.html", "https://wiki.freepascal.org/Debugger", "https://docwiki.embarcadero.com/RADStudio/en/Debugging_Applications"]},
+    {"language": "COBOL", "markers": [], "extensions": [".cob", ".cbl", ".cpy"], "checks": [], "engines": ["GnuCOBOL compiler diagnostics", "GDB", "unit test harnesses"], "references": ["https://gnucobol.sourceforge.io/doc/gnucobol.html", "https://www.ibm.com/docs/en/cobol-zos"]},
+    {"language": "PowerShell", "markers": ["PSScriptAnalyzerSettings.psd1"], "extensions": [".ps1", ".psm1", ".psd1"], "checks": [["pwsh", "-NoProfile", "-Command", "Invoke-ScriptAnalyzer -Path . -Recurse"]], "engines": ["PowerShell debugger", "PSScriptAnalyzer", "Pester"], "references": ["https://learn.microsoft.com/powershell/scripting/learn/deep-dives/everything-about-debugging", "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/overview", "https://pester.dev/docs/quick-start"]},
+    {"language": "Terraform/HCL", "markers": [".terraform.lock.hcl"], "extensions": [".tf", ".tfvars", ".hcl"], "checks": [["terraform", "validate"], ["tflint"]], "engines": ["terraform validate", "terraform plan", "tflint", "tfsec/checkov"], "references": ["https://developer.hashicorp.com/terraform/cli/commands/validate", "https://developer.hashicorp.com/terraform/cli/commands/plan", "https://github.com/terraform-linters/tflint"]},
+    {"language": "Nix", "markers": ["flake.nix", "default.nix", "shell.nix"], "extensions": [".nix"], "checks": [["nix", "flake", "check"]], "engines": ["nix flake check", "nix repl", "nix log"], "references": ["https://nixos.org/manual/nix/stable/", "https://nixos.wiki/wiki/Flakes", "https://nix.dev/manual/nix/2.24/command-ref/new-cli/nix3-log"]},
+    {"language": "Docker", "markers": ["Dockerfile", "docker-compose.yml", "compose.yaml"], "extensions": [".dockerfile"], "checks": [["hadolint", "Dockerfile"], ["docker", "compose", "config"]], "engines": ["hadolint", "docker build --progress=plain", "docker compose logs"], "references": ["https://docs.docker.com/build/building/best-practices/", "https://docs.docker.com/reference/cli/docker/compose/config/", "https://github.com/hadolint/hadolint"]},
+    {"language": "Kubernetes/Helm", "markers": ["Chart.yaml", "kustomization.yaml"], "extensions": [".yaml", ".yml"], "checks": [["helm", "lint"], ["kubeconform", "-summary", "."]], "engines": ["kubectl describe/logs/events", "helm lint", "kubeconform", "stern"], "references": ["https://kubernetes.io/docs/tasks/debug/", "https://helm.sh/docs/helm/helm_lint/", "https://github.com/yannh/kubeconform"]},
+    {"language": "YAML/CI", "markers": [".github", ".gitlab-ci.yml"], "extensions": [".yaml", ".yml"], "checks": [["yamllint", "."]], "engines": ["yamllint", "actionlint", "CI logs"], "references": ["https://yamllint.readthedocs.io/", "https://github.com/rhysd/actionlint", "https://docs.github.com/actions/monitoring-and-troubleshooting-workflows"]},
+    {"language": "GraphQL", "markers": ["graphql.config.yml", "graphql.config.js"], "extensions": [".graphql", ".gql"], "checks": [["graphql-schema-linter", "."]], "engines": ["GraphiQL", "Apollo trace", "schema lint"], "references": ["https://graphql.org/learn/", "https://www.apollographql.com/docs/", "https://github.com/cjoudrey/graphql-schema-linter"]},
+    {"language": "Protocol Buffers/gRPC", "markers": ["buf.yaml", "buf.gen.yaml"], "extensions": [".proto"], "checks": [["buf", "lint"], ["buf", "breaking", "--against", ".git#branch=main"]], "engines": ["buf lint", "grpcurl", "wire logs"], "references": ["https://protobuf.dev/", "https://buf.build/docs/", "https://github.com/fullstorydev/grpcurl"]},
+    {"language": "Solidity", "markers": ["foundry.toml", "hardhat.config.ts", "hardhat.config.js"], "extensions": [".sol"], "checks": [["forge", "test"], ["npx", "hardhat", "test"]], "engines": ["forge test/trace", "Hardhat console", "Slither"], "references": ["https://book.getfoundry.sh/", "https://hardhat.org/docs", "https://github.com/crytic/slither"]},
+    {"language": "Move", "markers": ["Move.toml"], "extensions": [".move"], "checks": [["sui", "move", "test"], ["aptos", "move", "test"]], "engines": ["Move unit tests", "Sui/Aptos CLI trace", "formal specs"], "references": ["https://move-language.github.io/move/", "https://docs.sui.io/concepts/sui-move-concepts", "https://aptos.dev/en/build/smart-contracts"]},
+    {"language": "Elm", "markers": ["elm.json"], "extensions": [".elm"], "checks": [["elm", "make", "src/Main.elm"]], "engines": ["elm make", "elm-test", "Elm debugger"], "references": ["https://guide.elm-lang.org/", "https://package.elm-lang.org/packages/elm-explorations/test/latest/", "https://guide.elm-lang.org/effects/time.html"]},
+    {"language": "ReScript", "markers": ["rescript.json", "bsconfig.json"], "extensions": [".res", ".resi"], "checks": [["rescript", "build", "-with-deps"]], "engines": ["rescript build", "JS source maps", "React DevTools"], "references": ["https://rescript-lang.org/docs/manual/latest/introduction", "https://rescript-lang.org/docs/react/latest/introduction"]},
+    {"language": "Haxe", "markers": ["build.hxml"], "extensions": [".hx", ".hxml"], "checks": [["haxe", "build.hxml"]], "engines": ["Haxe compiler diagnostics", "target debugger", "unit tests"], "references": ["https://haxe.org/documentation/", "https://haxe.org/manual/cr-debugging.html"]},
+    {"language": "Godot/GDScript", "markers": ["project.godot"], "extensions": [".gd", ".tscn", ".tres"], "checks": [["godot", "--headless", "--check-only"]], "engines": ["Godot debugger", "profiler", "remote scene tree"], "references": ["https://docs.godotengine.org/en/stable/tutorials/scripting/debug/index.html", "https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/"]},
+    {"language": "Unity", "markers": ["ProjectSettings", "Assets"], "extensions": [".cs", ".shader", ".asmdef"], "checks": [], "engines": ["Unity Console", "Profiler", "Frame Debugger", "Rider/VS debugger"], "references": ["https://docs.unity3d.com/Manual/ManagedCodeDebugging.html", "https://docs.unity3d.com/Manual/Profiler.html", "https://docs.unity3d.com/Manual/FrameDebugger.html"]},
+    {"language": "Unreal Engine", "markers": [], "extensions": [".uproject", ".uplugin"], "checks": [], "engines": ["Unreal Insights", "Visual Studio/Rider debugger", "stat commands"], "references": ["https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine", "https://dev.epicgames.com/documentation/en-us/unreal-engine/debugging-in-unreal-engine"]},
+    {"language": "WebAssembly", "markers": ["wasm-pack.toml"], "extensions": [".wat", ".wasm"], "checks": [["wasm-pack", "test", "--node"]], "engines": ["wasm-pack test", "Chrome Wasm debugger", "wasmtime"], "references": ["https://webassembly.org/getting-started/developers-guide/", "https://rustwasm.github.io/wasm-pack/book/", "https://developer.chrome.com/docs/devtools/wasm/"]},
+]
+for _item in LANGUAGE_MATRIX:
+    _item.setdefault("references", STACK_REFERENCES.get(_item["language"], []))
+LANGUAGE_MATRIX.extend(EXTRA_STACKS)
+
+TOP_FLOWS = [
+    {"name": "one_command_repo_truth", "trigger": "new repo, dirty repo, unknown health", "steps": ["identify git/remotes/branch", "map packages/extensions/stacks", "rank dirty impact", "run safe checks", "emit markdown/json/AI brief"], "output": "PASS/WARN/FAIL plus next 5 fixes"},
+    {"name": "dirty_impact_debug", "trigger": "many local changes or broken branch", "steps": ["ignore generated artifacts", "score changed files by graph/risk/fan-in", "group by stack/package", "inspect top 5 first"], "output": "smallest files that can explain the largest failure surface"},
+    {"name": "stack_specific_verification", "trigger": "repo has known language/framework markers", "steps": ["detect matrix entries", "load matching check commands", "filter unavailable tools and missing npm scripts", "run bounded checks"], "output": "real commands with stdout/stderr tails"},
+    {"name": "security_dependency_triage", "trigger": "release, dependency change, suspicious repo", "steps": ["run grepgod security when present", "combine semgrep/gitleaks/osv class findings", "prioritize reachable/package-level issues"], "output": "security/dependency queue before feature work"},
+    {"name": "frontend_ui_regression", "trigger": "Astro/Next/React/Vue/Svelte/UI bug", "steps": ["build/typecheck first", "open with Playwright/DevTools", "capture trace/screenshot if needed", "map component files to dirty impact"], "output": "visual/runtime evidence tied to source files"},
+    {"name": "native_runtime_crash", "trigger": "Rust/C/C++/Swift/Zig/native crash or hang", "steps": ["build with debug symbols", "use LLDB/GDB/core dump", "enable sanitizers or miri where relevant", "profile hot path"], "output": "crash frame, UB/memory/race hypothesis, verifying command"},
+    {"name": "backend_request_trace", "trigger": "API/service request fails or is slow", "steps": ["find endpoint/package", "reproduce with curl/hurl", "inspect logs/traces", "profile database/query plan"], "output": "request path with failing boundary"},
+    {"name": "monorepo_boundary_map", "trigger": "workspace/package coupling or broken shared code", "steps": ["count package markers", "map imports/call edges if grepgod exists", "link checks to packages", "rank shared modules"], "output": "which package to fix first and what depends on it"},
+    {"name": "ai_handoff_compression", "trigger": "Codex/Claude needs context fast", "steps": ["write JSON source of truth", "write markdown report", "write compact AI brief", "include next commands and anti-revert rule"], "output": "agent-ready context in under one screen"},
+    {"name": "fallback_no_grepgod", "trigger": "fresh machine, CI, Linux server without grepgod", "steps": ["use Python stdlib scanner", "detect stacks by markers/extensions", "run only installed safe checks", "skip unavailable engines cleanly"], "output": "portable report without hard dependency"},
+]
 
 
 def run(
@@ -242,10 +326,13 @@ def structure(repo: Path) -> dict:
     skip = {"node_modules", "target", "dist", "build", ".venv", "venv", "__pycache__", *GENERATED_DIRS}
     packages = []
     by_ext: dict[str, int] = {}
+    marker_names: set[str] = set()
     files = 0
     dirs = 0
     for dp, dirnames, filenames in os.walk(repo):
         dirnames[:] = [d for d in dirnames if d not in skip]
+        marker_names.update(dirnames)
+        marker_names.update(filenames)
         dirs += len(dirnames)
         rel_dir = os.path.relpath(dp, repo)
         found = sorted(set(filenames) & markers)
@@ -262,6 +349,7 @@ def structure(repo: Path) -> dict:
         "package_count": len(packages),
         "top_extensions": sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)[:25],
         "extensions": by_ext,
+        "marker_names": sorted(marker_names),
     }
 
 
@@ -312,9 +400,29 @@ def command_available(name: str) -> bool:
     return shutil.which(name) is not None
 
 
+def package_scripts(repo: Path) -> dict:
+    data = load_json(repo / "package.json", {}) if (repo / "package.json").exists() else {}
+    scripts = data.get("scripts", {}) if isinstance(data, dict) else {}
+    return scripts if isinstance(scripts, dict) else {}
+
+
+def command_supported(repo: Path, cmd: list[str]) -> bool:
+    if not cmd or not command_available(cmd[0]):
+        return False
+    scripts = package_scripts(repo)
+    if cmd[0] in {"npm", "pnpm"} and len(cmd) >= 3 and cmd[1] == "run":
+        return cmd[2] in scripts
+    if cmd[0] == "yarn" and len(cmd) >= 2:
+        return cmd[1] in scripts
+    if cmd[0] == "npx":
+        return (repo / "package.json").exists()
+    return True
+
+
 def detected_languages(repo: Path) -> list[dict]:
     s = structure(repo)
     markers = {m for pkg in s["packages"] for m in pkg.get("markers", [])}
+    markers.update(s.get("marker_names", []))
     ext_counts = s.get("extensions", {})
     found = []
     for item in LANGUAGE_MATRIX:
@@ -329,6 +437,7 @@ def detected_languages(repo: Path) -> list[dict]:
                     "files": sum(ext_hits.values()),
                     "engines": item["engines"],
                     "checks": item["checks"],
+                    "references": item.get("references", []),
                 }
             )
     found.sort(key=lambda r: (-r["files"], r["language"]))
@@ -349,7 +458,7 @@ def stack_engines(repo: Path) -> list[dict]:
 
 
 def detect_checks(repo: Path) -> list[list[str]]:
-    checks: list[list[str]] = [["git", "diff", "--check"]]
+    checks: list[list[str]] = [["git", "diff", "--check"]] if (repo / ".git").exists() else []
     justfile = repo / "justfile"
     if justfile.exists() and command_available("just"):
         text = justfile.read_text(errors="ignore")
@@ -358,10 +467,8 @@ def detect_checks(repo: Path) -> list[list[str]]:
             return checks
     if (repo / "Cargo.toml").exists() and command_available("cargo"):
         checks.append(["cargo", "check", "--workspace", "--all-targets"])
-    pkg = repo / "package.json"
-    if pkg.exists():
-        data = load_json(pkg, {})
-        scripts = data.get("scripts", {}) if isinstance(data, dict) else {}
+    if (repo / "package.json").exists():
+        scripts = package_scripts(repo)
         manager = "npm"
         if (repo / "yarn.lock").exists() and command_available("yarn"):
             manager = "yarn"
@@ -391,13 +498,11 @@ def detect_checks(repo: Path) -> list[list[str]]:
             if cmd in checks or not cmd:
                 continue
             exe = cmd[0]
-            if not command_available(exe):
-                continue
             if exe == "shellcheck":
                 if not shell_files:
                     continue
                 cmd = ["shellcheck", *shell_files]
-            if exe in {"npm", "yarn", "pnpm"} and not (repo / "package.json").exists():
+            elif not command_supported(repo, cmd):
                 continue
             checks.append(cmd)
     return checks[:5]
@@ -532,6 +637,14 @@ def markdown_report(report: dict) -> str:
     for lang in report.get("languages", [])[:20]:
         ext_text = ", ".join(f"{k}:{v}" for k, v in lang.get("extensions", {}).items()) or "-"
         lines.append(f"- **{lang['language']}** files={lang['files']} markers={','.join(lang['markers']) or '-'} extensions={ext_text}")
+    lines += ["", "## Stack References", ""]
+    for lang in report.get("languages", [])[:20]:
+        refs = lang.get("references", [])[:3]
+        if refs:
+            lines.append(f"- **{lang['language']}**: " + " · ".join(refs))
+    lines += ["", "## Debug Flows", ""]
+    for flow in report.get("flows", TOP_FLOWS)[:10]:
+        lines.append(f"- **{flow['name']}** — trigger: {flow['trigger']} → output: {flow['output']}")
     if gi:
         lines += [
             "",
@@ -597,6 +710,7 @@ def ai_brief(report: dict) -> str:
             f"Map: funcs={gi.get('funcmap', {}).get('functions', 0)} edges={gi.get('funcmap', {}).get('edges', 0)} risks={gi.get('riskmap', {}).get('total', 0)}",
             f"Checks: {len(checks) - len(failing)}/{len(checks)} passed",
             f"Security: {report.get('security', {}).get('summary', 'not run')}",
+            "Top flows: " + ", ".join(f["name"] for f in report.get("flows", TOP_FLOWS)[:5]),
             "",
             "Next 5 fixes:",
             *[
@@ -695,6 +809,20 @@ def cmd_engines(_args) -> int:
     for layer in data.get("feature_layers", []):
         print(f"- {layer}")
     print(f"\nTools cataloged: {len(data.get('tools', []))}")
+    print(f"Language/framework stacks: {len(LANGUAGE_MATRIX)}")
+    return 0
+
+
+def cmd_flows(args) -> int:
+    rows = TOP_FLOWS
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    for flow in rows:
+        print(f"{flow['name']}\n  trigger: {flow['trigger']}\n  steps:")
+        for step in flow["steps"]:
+            print(f"  - {step}")
+        print(f"  output: {flow['output']}\n")
     return 0
 
 
@@ -736,6 +864,7 @@ def cmd_all(args) -> int:
         "checks": [] if args.no_checks else run_checks(repo, args.timeout),
         "security": {} if args.no_security else run_security(repo, args.timeout),
         "recommended_engines": stack_engines(repo),
+        "flows": TOP_FLOWS,
         "repovista_reference": {
             "package": "repovista",
             "latest_seen": "0.5.1",
@@ -796,6 +925,10 @@ def main() -> int:
 
     engines = sub.add_parser("engines")
     engines.set_defaults(func=cmd_engines)
+
+    flows = sub.add_parser("flows")
+    flows.add_argument("--json", action="store_true")
+    flows.set_defaults(func=cmd_flows)
 
     init = sub.add_parser("init")
     init.add_argument("--link", action="store_true", help="symlink debugmaster into ~/.local/bin")

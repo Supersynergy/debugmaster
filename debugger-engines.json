@@ -22,7 +22,9 @@
     "test_failure_triage",
     "performance_profile",
     "log_correlation",
-    "repo_drift_preflight"
+    "repo_drift_preflight",
+    "language_stack_references",
+    "debug_flow_orchestration"
   ],
   "tools": [
     {"name": "grepgod", "category": "codegraph", "best_feature": "One-command map, healthmap, riskmap, debug brief", "debugmaster_use": "primary local engine when installed"},

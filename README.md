@@ -9,6 +9,7 @@ Use this folder as the first stop when you need to scan an existing project, und
 ```bash
 debugmaster/bin/debugmaster init
 debugmaster/bin/debugmaster all . --timeout 60
+debugmaster/bin/debugmaster flows
 debugmaster/bin/debugmaster scan .
 debugmaster/bin/debugmaster codex-brief .
 debugmaster/bin/debugmaster catalog race
@@ -59,6 +60,7 @@ ghmax --repos "code graph static analysis" --stars-min 100 -n 8 --sort stars
 | `local-paths.md` | Human-readable path index |
 | `github-tools.md` | GitHub/Gitea tools and repos found |
 | `runbook.md` | Practical debugging workflow |
+| `debug-flows.md` | Top Debugmaster flows for typical repo, stack, runtime, UI, security, and monorepo failures |
 | `CODEX.md` | Codex-specific usage rules and copy-paste prompt |
 | `marketdeck-scan.md` | Results from running Debugmaster on local git.marketdeck.io repos |
 | `bin/debugmaster-scan` | Repeatable healthmap scan script |
@@ -71,6 +73,7 @@ ghmax --repos "code graph static analysis" --stars-min 100 -n 8 --sort stars
 debugmaster/install.sh --link
 debugmaster all . --timeout 60
 debugmaster/bin/debugmaster engines
+debugmaster/bin/debugmaster flows --json
 debugmaster/bin/debugmaster scan /Users/master/projects/supersynergycrmpro /Users/master/projects/WINvestmentMAXIM
 debugmaster/bin/debugmaster repo /Users/master/projects/supersynergycrmpro --full
 debugmaster/bin/debugmaster top-risk /Users/master/projects/mdviewy -n 10
@@ -98,7 +101,9 @@ Includes:
 
 - repo identity and Git status
 - structure: packages, file extensions, files, dirs
-- detected Top-20 language/stack matrix: Rust, TypeScript, Go, JavaScript, Python, UI/Web, Mobile, Java, Kotlin, C/C++, C#/.NET, PHP, Ruby, Swift, Dart/Flutter, Elixir, Scala, R, Shell, SQL
+- detected 60+ language/framework stack matrix with references, including Rust, TypeScript, Go, JavaScript, Python, Astro, Next.js, React, Vue, SvelteKit, Vite, Tailwind, Mobile, Java, Kotlin, C/C++, C#/.NET, PHP, Ruby, Swift, Dart/Flutter, Elixir, Scala, R, Shell, SQL, Docker, Kubernetes, Terraform, Nix, GraphQL, Protobuf, Solidity, Zig, Haskell, OCaml, Clojure, Erlang, Lua, Perl, Julia, Nim, Crystal, D, Objective-C, Groovy/Gradle, Fortran, PowerShell, Godot, Unity, Unreal, and WebAssembly
+- stack references: official docs/debugging/testing links per detected stack
+- top Debugmaster flows: repo truth, dirty impact, stack verification, security/dependency, frontend regression, native crash, backend trace, monorepo boundary, AI handoff, and no-grepgod fallback
 - grepgod map data when available: functions, call edges, endpoints, tables, risks
 - dirty impact ranking
 - security/dependency scan via `grepgod --chain security` when available
@@ -109,4 +114,4 @@ Includes:
 
 RepoVista reference: npm `repovista@0.5.1` is a read-only AI repository audit CLI for local provider CLIs. Debugmaster adapts the read-only report-artifact model, but works without Codex/Claude providers.
 
-Implementation note: Debugmaster is not a Python-only debugger. The launcher is Python for portability, while the scanner is multi-language and detects/recommends checks/debug engines for Rust, TypeScript, Go, JavaScript, UI, mobile, JVM, .NET, PHP, Ruby, Swift, Dart/Flutter, Elixir, Scala, R, Shell, SQL, and native C/C++ repos.
+Implementation note: Debugmaster is not a Python-only debugger. The launcher is Python for portability, while the scanner is multi-language and detects/recommends checks, references, flows, and debug engines for 60+ language and framework stacks.
