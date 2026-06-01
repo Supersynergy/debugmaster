@@ -7,6 +7,9 @@ Use this folder as the first stop when you need to scan an existing project, und
 ## Fast Path
 
 ```bash
+debugmaster/bin/debugmaster scan .
+debugmaster/bin/debugmaster codex-brief .
+debugmaster/bin/debugmaster catalog race
 grepgod --chain map .
 grepgod healthmap .
 grepgod ask . "risks"
@@ -57,3 +60,18 @@ ghmax --repos "code graph static analysis" --stars-min 100 -n 8 --sort stars
 | `CODEX.md` | Codex-specific usage rules and copy-paste prompt |
 | `marketdeck-scan.md` | Results from running Debugmaster on local git.marketdeck.io repos |
 | `bin/debugmaster-scan` | Repeatable healthmap scan script |
+| `bin/debugmaster` | Standalone Debugmaster CLI |
+| `debugger-engines.json` | 100+ debugger/profiler/observability tool feature catalog |
+
+## Standalone CLI
+
+```bash
+debugmaster/bin/debugmaster engines
+debugmaster/bin/debugmaster scan /Users/master/projects/supersynergycrmpro /Users/master/projects/WINvestmentMAXIM
+debugmaster/bin/debugmaster repo /Users/master/projects/supersynergycrmpro --full
+debugmaster/bin/debugmaster top-risk /Users/master/projects/mdviewy -n 10
+debugmaster/bin/debugmaster codex-brief .
+debugmaster/bin/debugmaster catalog "race"
+```
+
+`debugmaster` uses grepgod when available. If grepgod is missing, it still reports Git dirty state, package counts, and a fallback impact score.

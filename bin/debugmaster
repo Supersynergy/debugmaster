@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Debugmaster standalone debug orchestrator.
+
+It uses grepgod when available, but keeps a local fallback for repo health,
+catalog lookup, and Codex briefs. The goal is one entrypoint for "debug anything"
+without forcing every future workflow into grepgod.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CATALOG = ROOT / "debugger-engines.json"
+TOOLS = ROOT / "tools.json"
+
+
+def run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check)
+
+
+def load_json(path: Path, default):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return default
+
+
+def git_changed(repo: Path) -> list[dict[str, str]]:
+    if not (repo / ".git").exists():
+        return []
+    cp = run(["git", "-C", str(repo), "status", "--porcelain=v1", "-uall"])
+    rows = []
+    for line in cp.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path.startswith((".grepgod/", ".codegraph/")):
+            continue
+        rows.append({"status": line[:2].strip() or "M", "path": path})
+    return rows
+
+
+def package_count(repo: Path) -> int:
+    markers = {"package.json", "Cargo.toml", "pyproject.toml", "go.mod", "deno.json", "deno.jsonc"}
+    skip = {".git", "node_modules", "target", "dist", "build", ".grepgod", ".codegraph", ".venv", "venv"}
+    count = 0
+    for dp, dirs, files in os.walk(repo):
+        dirs[:] = [d for d in dirs if d not in skip]
+        if markers.intersection(files):
+            count += 1
+    return count
+
+
+def fallback_health(repo: Path) -> dict:
+    changed = git_changed(repo)
+    return {
+        "status": "DIRTY" if changed else "FRESH",
+        "engine": "debugmaster-fallback",
+        "repo": str(repo),
+        "dirty": bool(changed),
+        "changed_files": len(changed),
+        "impact": len(changed) * 4,
+        "packages": package_count(repo),
+        "top_changed": changed[:20],
+    }
+
+
+def grepgod_health(repo: Path) -> dict | None:
+    if not shutil.which("grepgod"):
+        return None
+    cp = run(["grepgod", "healthmap", str(repo)])
+    hp = repo / ".grepgod" / "healthmap.json"
+    if cp.returncode != 0 or not hp.exists():
+        return None
+    data = load_json(hp, {})
+    return {
+        "status": data.get("status", "UNKNOWN"),
+        "engine": "grepgod",
+        "repo": str(repo),
+        "dirty": bool(data.get("git", {}).get("dirty")),
+        "changed_files": len(data.get("git", {}).get("changed_files", [])),
+        "impact": data.get("impact", {}).get("score", 0),
+        "packages": data.get("monorepo", {}).get("package_count", 0),
+        "top_changed": data.get("impact", {}).get("changed_files", [])[:20],
+    }
+
+
+def health(repo: Path) -> dict:
+    return grepgod_health(repo) or fallback_health(repo)
+
+
+def cmd_scan(args) -> int:
+    repos = [Path(p).expanduser().resolve() for p in (args.repos or ["."])]
+    print("repo\tstatus\tengine\tdirty\tchanged_files\timpact\tpackages")
+    for repo in repos:
+        if not repo.exists():
+            continue
+        h = health(repo)
+        print(
+            f"{h['repo']}\t{h['status']}\t{h['engine']}\t{str(h['dirty']).lower()}\t"
+            f"{h['changed_files']}\t{h['impact']}\t{h['packages']}"
+        )
+    return 0
+
+
+def cmd_repo(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    if args.full and shutil.which("grepgod"):
+        subprocess.run(["grepgod", "--chain", "map", str(repo)], check=False)
+    h = health(repo)
+    print(json.dumps(h, indent=2))
+    return 0
+
+
+def cmd_top_risk(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    h = health(repo)
+    rows = sorted(h.get("top_changed", []), key=lambda r: r.get("score", 0), reverse=True)
+    for row in rows[: args.limit]:
+        score = row.get("score", 0)
+        risks = row.get("nearby_risks", 0)
+        fanin = row.get("max_fanin", 0)
+        print(f"{score:>4} risks={risks:<3} fanin={fanin:<3} {row.get('path')}")
+    return 0
+
+
+def cmd_codex_brief(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    h = health(repo)
+    print(f"# Debugmaster Codex Brief\n")
+    print(f"Repo: `{repo}`")
+    print(f"Status: **{h['status']}** via `{h['engine']}`")
+    print(f"Dirty files: **{h['changed_files']}** · impact: **{h['impact']}** · packages: **{h['packages']}**\n")
+    print("## Next Commands\n")
+    print("```bash")
+    print("grepgod --chain map .")
+    print("grepgod healthmap .")
+    print('grepgod ask . "risks"')
+    print('grepgod ask . "hotspots"')
+    print("git status --short --branch")
+    print("```\n")
+    print("## Highest Impact Dirty Files\n")
+    for row in h.get("top_changed", [])[: args.limit]:
+        print(f"- `{row.get('path')}` score={row.get('score', 0)} risks={row.get('nearby_risks', 0)}")
+    return 0
+
+
+def cmd_catalog(args) -> int:
+    data = load_json(CATALOG, {"tools": []})
+    q = (args.query or "").lower()
+    rows = data.get("tools", [])
+    if q:
+        rows = [
+            r for r in rows
+            if q in r.get("name", "").lower()
+            or q in r.get("category", "").lower()
+            or q in r.get("best_feature", "").lower()
+            or q in r.get("debugmaster_use", "").lower()
+        ]
+    for r in rows[: args.limit]:
+        print(f"{r['name']}\t{r['category']}\t{r['best_feature']}\t{r['debugmaster_use']}")
+    return 0
+
+
+def cmd_engines(_args) -> int:
+    data = load_json(CATALOG, {"feature_layers": [], "tools": []})
+    print(f"Feature layers: {len(data.get('feature_layers', []))}")
+    for layer in data.get("feature_layers", []):
+        print(f"- {layer}")
+    print(f"\nTools cataloged: {len(data.get('tools', []))}")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="debugmaster")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    scan = sub.add_parser("scan")
+    scan.add_argument("repos", nargs="*")
+    scan.set_defaults(func=cmd_scan)
+
+    repo = sub.add_parser("repo")
+    repo.add_argument("repo")
+    repo.add_argument("--full", action="store_true")
+    repo.set_defaults(func=cmd_repo)
+
+    risk = sub.add_parser("top-risk")
+    risk.add_argument("repo", nargs="?", default=".")
+    risk.add_argument("-n", "--limit", type=int, default=20)
+    risk.set_defaults(func=cmd_top_risk)
+
+    brief = sub.add_parser("codex-brief")
+    brief.add_argument("repo", nargs="?", default=".")
+    brief.add_argument("-n", "--limit", type=int, default=12)
+    brief.set_defaults(func=cmd_codex_brief)
+
+    catalog = sub.add_parser("catalog")
+    catalog.add_argument("query", nargs="?")
+    catalog.add_argument("-n", "--limit", type=int, default=30)
+    catalog.set_defaults(func=cmd_catalog)
+
+    engines = sub.add_parser("engines")
+    engines.set_defaults(func=cmd_engines)
+
+    args = ap.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

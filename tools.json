@@ -34,6 +34,13 @@
       "kind": "local_cli",
       "path": "/Users/master/.local/bin/synx",
       "purpose": "Synapse fact/decision write and find"
+    },
+    {
+      "name": "debugmaster",
+      "kind": "standalone_cli",
+      "path": "/Users/master/projects/cmux-vault/debugmaster/bin/debugmaster",
+      "catalog": "/Users/master/projects/cmux-vault/debugmaster/debugger-engines.json",
+      "purpose": "Standalone multi-engine debug orchestrator using grepgod when available and local fallback otherwise"
     }
   ],
   "grepgod_runtime_scripts": [

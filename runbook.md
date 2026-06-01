@@ -5,6 +5,8 @@ Use this when entering an unfamiliar or dirty codebase.
 ## 1. Build The Atlas
 
 ```bash
+debugmaster/bin/debugmaster scan .
+debugmaster/bin/debugmaster codex-brief .
 grepgod --chain map .
 ```
 
@@ -73,7 +75,19 @@ ghmax "<literal API or code anchor>" --lang TypeScript -n 20
 Use `ghmax --repos` for tools and architecture.
 Use literal `ghmax`/code search for concrete implementation patterns.
 
-## 7. Verify Before Reporting
+## 7. Use The Standalone Engine Catalog
+
+```bash
+debugmaster/bin/debugmaster engines
+debugmaster/bin/debugmaster catalog "python"
+debugmaster/bin/debugmaster catalog "race"
+debugmaster/bin/debugmaster catalog "llm"
+debugmaster/bin/debugmaster catalog "network"
+```
+
+The catalog is offline and includes debugger, profiler, tracing, browser, mobile, network, database, ML/LLM, and reverse-engineering patterns.
+
+## 8. Verify Before Reporting
 
 For grepgod itself:
 
