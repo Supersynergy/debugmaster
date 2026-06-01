@@ -14,16 +14,173 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "debugger-engines.json"
 TOOLS = ROOT / "tools.json"
+REPORTS = ROOT / "reports"
+GENERATED_DIRS = {".git", ".grepgod", ".codegraph", ".debugmaster", ".repovista"}
+LANGUAGE_MATRIX = [
+    {
+        "language": "Rust",
+        "markers": ["Cargo.toml"],
+        "extensions": [".rs"],
+        "checks": [["cargo", "check", "--workspace", "--all-targets"], ["cargo", "test", "--workspace"], ["cargo", "clippy", "--workspace", "--all-targets"]],
+        "engines": ["cargo check", "cargo test", "cargo clippy", "cargo miri", "LLDB/GDB", "cargo flamegraph", "tokio-console"],
+    },
+    {
+        "language": "TypeScript",
+        "markers": ["package.json", "tsconfig.json"],
+        "extensions": [".ts", ".tsx"],
+        "checks": [["npm", "run", "typecheck"], ["npm", "run", "test"], ["npm", "run", "build"]],
+        "engines": ["tsc", "Vitest", "Playwright", "Chrome DevTools", "React/Vue/Angular DevTools"],
+    },
+    {
+        "language": "JavaScript",
+        "markers": ["package.json"],
+        "extensions": [".js", ".jsx", ".mjs", ".cjs"],
+        "checks": [["npm", "run", "test"], ["npm", "run", "build"]],
+        "engines": ["node --inspect", "Vitest/Jest", "Playwright", "Chrome DevTools"],
+    },
+    {
+        "language": "Go",
+        "markers": ["go.mod"],
+        "extensions": [".go"],
+        "checks": [["go", "test", "./..."], ["go", "test", "-race", "./..."]],
+        "engines": ["Delve", "go test -race", "pprof", "go tool trace"],
+    },
+    {
+        "language": "Python",
+        "markers": ["pyproject.toml", "requirements.txt", "setup.py"],
+        "extensions": [".py"],
+        "checks": [["pytest", "-q"], ["python3", "-m", "compileall", "."]],
+        "engines": ["pytest", "debugpy/pdb", "py-spy", "Scalene", "Hypothesis"],
+    },
+    {
+        "language": "Java",
+        "markers": ["pom.xml", "build.gradle", "build.gradle.kts"],
+        "extensions": [".java"],
+        "checks": [["mvn", "test"], ["gradle", "test"]],
+        "engines": ["JDB", "JFR", "VisualVM", "Async Profiler"],
+    },
+    {
+        "language": "Kotlin",
+        "markers": ["build.gradle.kts", "settings.gradle.kts"],
+        "extensions": [".kt", ".kts"],
+        "checks": [["gradle", "test"]],
+        "engines": ["IntelliJ debugger", "JFR", "Android Studio Profiler"],
+    },
+    {
+        "language": "C/C++",
+        "markers": ["CMakeLists.txt", "Makefile", "meson.build"],
+        "extensions": [".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"],
+        "checks": [["cmake", "--build", "build"], ["make", "test"]],
+        "engines": ["GDB", "LLDB", "Valgrind", "ASan/TSan/UBSan", "perf"],
+    },
+    {
+        "language": "C#/.NET",
+        "markers": ["global.json"],
+        "extensions": [".cs", ".fs", ".vb"],
+        "checks": [["dotnet", "test"], ["dotnet", "build"]],
+        "engines": ["dotnet test", "Visual Studio debugger", "dotnet-trace", "dotnet-counters"],
+    },
+    {
+        "language": "PHP",
+        "markers": ["composer.json"],
+        "extensions": [".php"],
+        "checks": [["composer", "test"]],
+        "engines": ["Xdebug", "Laravel Debugbar", "Blackfire", "PHPUnit"],
+    },
+    {
+        "language": "Ruby",
+        "markers": ["Gemfile", "Rakefile"],
+        "extensions": [".rb"],
+        "checks": [["bundle", "exec", "rspec"], ["bundle", "exec", "rake", "test"]],
+        "engines": ["rdbg", "byebug", "RSpec", "rack-mini-profiler"],
+    },
+    {
+        "language": "Swift",
+        "markers": ["Package.swift"],
+        "extensions": [".swift"],
+        "checks": [["swift", "test"], ["swift", "build"]],
+        "engines": ["Xcode debugger", "LLDB", "Instruments"],
+    },
+    {
+        "language": "Dart/Flutter",
+        "markers": ["pubspec.yaml"],
+        "extensions": [".dart"],
+        "checks": [["flutter", "test"], ["dart", "test"]],
+        "engines": ["Flutter DevTools", "Dart Observatory", "Android Studio Profiler"],
+    },
+    {
+        "language": "Elixir",
+        "markers": ["mix.exs"],
+        "extensions": [".ex", ".exs"],
+        "checks": [["mix", "test"]],
+        "engines": ["IEx.pry", "Observer", "Telemetry", "ExUnit"],
+    },
+    {
+        "language": "Scala",
+        "markers": ["build.sbt"],
+        "extensions": [".scala", ".sc"],
+        "checks": [["sbt", "test"]],
+        "engines": ["IntelliJ debugger", "JFR", "Async Profiler"],
+    },
+    {
+        "language": "R",
+        "markers": ["DESCRIPTION", "renv.lock"],
+        "extensions": [".r", ".R"],
+        "checks": [["Rscript", "-e", "devtools::test()"]],
+        "engines": ["browser()", "debug()", "profvis", "testthat"],
+    },
+    {
+        "language": "Shell",
+        "markers": [],
+        "extensions": [".sh", ".bash", ".zsh"],
+        "checks": [["shellcheck", "."]],
+        "engines": ["bash -x", "shellcheck", "shfmt", "strace/dtruss"],
+    },
+    {
+        "language": "SQL",
+        "markers": [],
+        "extensions": [".sql"],
+        "checks": [],
+        "engines": ["EXPLAIN ANALYZE", "pg_stat_statements", "query logs"],
+    },
+    {
+        "language": "UI/Web",
+        "markers": ["vite.config.ts", "next.config.js", "astro.config.mjs"],
+        "extensions": [".tsx", ".jsx", ".vue", ".svelte", ".astro", ".css"],
+        "checks": [["npm", "run", "build"]],
+        "engines": ["Playwright trace viewer", "Chrome DevTools", "React/Vue/Svelte DevTools", "Lighthouse"],
+    },
+    {
+        "language": "Mobile",
+        "markers": ["android", "ios", "pubspec.yaml"],
+        "extensions": [".swift", ".kt", ".java", ".dart"],
+        "checks": [],
+        "engines": ["adb logcat", "Android Studio Profiler", "Xcode debugger", "FLEX", "Flipper"],
+    },
+]
 
 
-def run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check)
+def run(
+    cmd: list[str],
+    cwd: Path | None = None,
+    check: bool = False,
+    timeout: int | None = None,
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=check,
+        timeout=timeout,
+    )
 
 
 def load_json(path: Path, default):
@@ -31,6 +188,25 @@ def load_json(path: Path, default):
         return json.loads(path.read_text())
     except Exception:
         return default
+
+
+def repo_identity(repo: Path) -> dict:
+    remotes = []
+    if (repo / ".git").exists():
+        cp = run(["git", "-C", str(repo), "remote", "-v"])
+        for line in cp.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] == "(fetch)":
+                remotes.append({"name": parts[0], "url": parts[1]})
+    branch = run(["git", "-C", str(repo), "branch", "--show-current"]) if (repo / ".git").exists() else None
+    head = run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"]) if (repo / ".git").exists() else None
+    return {
+        "name": repo.name,
+        "path": str(repo),
+        "branch": branch.stdout.strip() if branch and branch.returncode == 0 else "",
+        "head": head.stdout.strip() if head and head.returncode == 0 else "",
+        "remotes": remotes,
+    }
 
 
 def git_changed(repo: Path) -> list[dict[str, str]]:
@@ -44,7 +220,7 @@ def git_changed(repo: Path) -> list[dict[str, str]]:
         path = line[3:]
         if " -> " in path:
             path = path.split(" -> ", 1)[1]
-        if path.startswith((".grepgod/", ".codegraph/")):
+        if path.startswith((".grepgod/", ".codegraph/", ".debugmaster/", ".repovista/")):
             continue
         rows.append({"status": line[:2].strip() or "M", "path": path})
     return rows
@@ -52,13 +228,41 @@ def git_changed(repo: Path) -> list[dict[str, str]]:
 
 def package_count(repo: Path) -> int:
     markers = {"package.json", "Cargo.toml", "pyproject.toml", "go.mod", "deno.json", "deno.jsonc"}
-    skip = {".git", "node_modules", "target", "dist", "build", ".grepgod", ".codegraph", ".venv", "venv"}
+    skip = {"node_modules", "target", "dist", "build", ".venv", "venv", *GENERATED_DIRS}
     count = 0
     for dp, dirs, files in os.walk(repo):
         dirs[:] = [d for d in dirs if d not in skip]
         if markers.intersection(files):
             count += 1
     return count
+
+
+def structure(repo: Path) -> dict:
+    markers = {"package.json", "Cargo.toml", "pyproject.toml", "go.mod", "deno.json", "deno.jsonc"}
+    skip = {"node_modules", "target", "dist", "build", ".venv", "venv", "__pycache__", *GENERATED_DIRS}
+    packages = []
+    by_ext: dict[str, int] = {}
+    files = 0
+    dirs = 0
+    for dp, dirnames, filenames in os.walk(repo):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        dirs += len(dirnames)
+        rel_dir = os.path.relpath(dp, repo)
+        found = sorted(set(filenames) & markers)
+        if found:
+            packages.append({"path": "." if rel_dir == "." else rel_dir, "markers": found})
+        for name in filenames:
+            files += 1
+            ext = Path(name).suffix.lower() or "[none]"
+            by_ext[ext] = by_ext.get(ext, 0) + 1
+    return {
+        "files": files,
+        "dirs": dirs,
+        "packages": packages[:200],
+        "package_count": len(packages),
+        "top_extensions": sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)[:25],
+        "extensions": by_ext,
+    }
 
 
 def fallback_health(repo: Path) -> dict:
@@ -76,7 +280,7 @@ def fallback_health(repo: Path) -> dict:
 
 
 def grepgod_health(repo: Path) -> dict | None:
-    if not shutil.which("grepgod"):
+    if os.environ.get("DEBUGMASTER_NO_GREPGOD") == "1" or not shutil.which("grepgod"):
         return None
     cp = run(["grepgod", "healthmap", str(repo)])
     hp = repo / ".grepgod" / "healthmap.json"
@@ -97,6 +301,319 @@ def grepgod_health(repo: Path) -> dict | None:
 
 def health(repo: Path) -> dict:
     return grepgod_health(repo) or fallback_health(repo)
+
+
+def load_grepgod_index(repo: Path) -> dict:
+    idx = repo / ".grepgod" / "map-index.json"
+    return load_json(idx, {}) if idx.exists() else {}
+
+
+def command_available(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+def detected_languages(repo: Path) -> list[dict]:
+    s = structure(repo)
+    markers = {m for pkg in s["packages"] for m in pkg.get("markers", [])}
+    ext_counts = s.get("extensions", {})
+    found = []
+    for item in LANGUAGE_MATRIX:
+        marker_hits = sorted(set(item["markers"]) & markers)
+        ext_hits = {ext: ext_counts.get(ext, 0) for ext in item["extensions"] if ext_counts.get(ext, 0)}
+        if marker_hits or ext_hits:
+            found.append(
+                {
+                    "language": item["language"],
+                    "markers": marker_hits,
+                    "extensions": ext_hits,
+                    "files": sum(ext_hits.values()),
+                    "engines": item["engines"],
+                    "checks": item["checks"],
+                }
+            )
+    found.sort(key=lambda r: (-r["files"], r["language"]))
+    return found
+
+
+def stack_engines(repo: Path) -> list[dict]:
+    engines = []
+    for lang in detected_languages(repo):
+        for engine in lang["engines"]:
+            engines.append({"stack": lang["language"], "engine": engine, "why": "detected stack engine"})
+    engines += [
+        {"stack": "Generic", "engine": "grepgod/debugmaster healthmap", "why": "dirty impact ranking"},
+        {"stack": "Generic", "engine": "semgrep/gitleaks/osv-scanner", "why": "security and dependency scan"},
+        {"stack": "Generic", "engine": "OpenTelemetry/log correlation", "why": "distributed runtime debugging"},
+    ]
+    return engines
+
+
+def detect_checks(repo: Path) -> list[list[str]]:
+    checks: list[list[str]] = [["git", "diff", "--check"]]
+    justfile = repo / "justfile"
+    if justfile.exists() and command_available("just"):
+        text = justfile.read_text(errors="ignore")
+        if any(line.startswith("check:") for line in text.splitlines()):
+            checks.append(["just", "check"])
+            return checks
+    if (repo / "Cargo.toml").exists() and command_available("cargo"):
+        checks.append(["cargo", "check", "--workspace", "--all-targets"])
+    pkg = repo / "package.json"
+    if pkg.exists():
+        data = load_json(pkg, {})
+        scripts = data.get("scripts", {}) if isinstance(data, dict) else {}
+        manager = "npm"
+        if (repo / "yarn.lock").exists() and command_available("yarn"):
+            manager = "yarn"
+        elif (repo / "pnpm-lock.yaml").exists() and command_available("pnpm"):
+            manager = "pnpm"
+        elif not command_available("npm"):
+            manager = ""
+        for script in ("check", "test", "build"):
+            if manager and script in scripts:
+                checks.append([manager, "run", script] if manager != "yarn" else ["yarn", script])
+                break
+    if ((repo / "pyproject.toml").exists() or (repo / "tests").exists()) and command_available("pytest"):
+        checks.append(["pytest", "-q"])
+    shell_files = [
+        str(p.relative_to(repo))
+        for p in repo.rglob("*.sh")
+        if not any(
+            part in GENERATED_DIRS
+            or part in {"node_modules", "target", "dist", "build", "vendor", "vendors", "data", "claude-code-ui"}
+            for part in p.relative_to(repo).parts
+        )
+    ][:80]
+    for lang in detected_languages(repo):
+        for cmd in lang.get("checks", []):
+            if len(checks) >= 8:
+                break
+            if cmd in checks or not cmd:
+                continue
+            exe = cmd[0]
+            if not command_available(exe):
+                continue
+            if exe == "shellcheck":
+                if not shell_files:
+                    continue
+                cmd = ["shellcheck", *shell_files]
+            if exe in {"npm", "yarn", "pnpm"} and not (repo / "package.json").exists():
+                continue
+            checks.append(cmd)
+    return checks[:5]
+
+
+def run_checks(repo: Path, timeout: int) -> list[dict]:
+    results = []
+    for cmd in detect_checks(repo):
+        started = time.time()
+        try:
+            cp = run(cmd, cwd=repo, timeout=timeout)
+            results.append(
+                {
+                    "cmd": cmd,
+                    "ok": cp.returncode == 0,
+                    "returncode": cp.returncode,
+                    "seconds": round(time.time() - started, 2),
+                    "stdout_tail": cp.stdout[-4000:],
+                    "stderr_tail": cp.stderr[-4000:],
+                }
+            )
+        except subprocess.TimeoutExpired as e:
+            results.append(
+                {
+                    "cmd": cmd,
+                    "ok": False,
+                    "returncode": "timeout",
+                    "seconds": timeout,
+                    "stdout_tail": (e.stdout or "")[-4000:] if isinstance(e.stdout, str) else "",
+                    "stderr_tail": (e.stderr or "")[-4000:] if isinstance(e.stderr, str) else "",
+                }
+            )
+    return results
+
+
+def run_security(repo: Path, timeout: int) -> dict:
+    if os.environ.get("DEBUGMASTER_NO_GREPGOD") == "1" or not command_available("grepgod"):
+        return {"engine": "none", "ok": None, "summary": "grepgod unavailable; security scan skipped", "stdout_tail": "", "stderr_tail": ""}
+    try:
+        cp = run(["grepgod", "--chain", "security"], cwd=repo, timeout=timeout)
+        text = (cp.stdout + "\n" + cp.stderr)[-12000:]
+        return {
+            "engine": "grepgod --chain security",
+            "ok": cp.returncode == 0,
+            "returncode": cp.returncode,
+            "summary": "completed" if cp.returncode == 0 else "findings or scan failure",
+            "stdout_tail": cp.stdout[-6000:],
+            "stderr_tail": cp.stderr[-6000:],
+            "combined_tail": text,
+        }
+    except subprocess.TimeoutExpired:
+        return {"engine": "grepgod --chain security", "ok": False, "returncode": "timeout", "summary": "security scan timed out", "stdout_tail": "", "stderr_tail": ""}
+
+
+def verdict(report: dict) -> str:
+    checks = report.get("checks", [])
+    if any(not c.get("ok") for c in checks):
+        return "FAIL"
+    sec = report.get("security", {})
+    if sec.get("ok") is False:
+        return "FAIL"
+    health_data = report.get("health", {})
+    risk_total = report.get("grepgod_index", {}).get("riskmap", {}).get("total", 0)
+    if health_data.get("status") == "ATTENTION" or risk_total:
+        return "WARN"
+    if health_data.get("dirty"):
+        return "WARN"
+    return "PASS"
+
+
+def next_fixes(report: dict) -> list[dict]:
+    fixes = []
+    for c in report.get("checks", []):
+        if not c.get("ok"):
+            fixes.append({
+                "priority": len(fixes) + 1,
+                "title": "Fix failing check",
+                "target": " ".join(c.get("cmd", [])),
+                "reason": f"returncode={c.get('returncode')}",
+            })
+    sec = report.get("security", {})
+    if sec.get("ok") is False:
+        fixes.append({
+            "priority": len(fixes) + 1,
+            "title": "Review security/dependency scan",
+            "target": sec.get("engine", "security"),
+            "reason": sec.get("summary", "security finding"),
+        })
+    for row in report.get("health", {}).get("top_changed", []):
+        if len(fixes) >= 5:
+            break
+        fixes.append({
+            "priority": len(fixes) + 1,
+            "title": "Inspect high-impact dirty file",
+            "target": row.get("path"),
+            "reason": f"score={row.get('score', 0)} risks={row.get('nearby_risks', 0)} fanin={row.get('max_fanin', 0)}",
+        })
+    return fixes[:5]
+
+
+def markdown_report(report: dict) -> str:
+    h = report["health"]
+    s = report["structure"]
+    gi = report.get("grepgod_index", {})
+    lines = [
+        "# Debugmaster All-In-One Report",
+        "",
+        f"Repo: `{report['repo']}`",
+        f"Branch: `{report.get('identity', {}).get('branch', '')}` · HEAD: `{report.get('identity', {}).get('head', '')}`",
+        f"Verdict: **{report['verdict']}**",
+        f"Engine: `{h.get('engine')}`",
+        "",
+        "## Health",
+        "",
+        f"- Status: **{h.get('status')}**",
+        f"- Dirty files: **{h.get('changed_files')}**",
+        f"- Impact: **{h.get('impact')}**",
+        f"- Packages: **{h.get('packages')}**",
+        "",
+        "## Structure",
+        "",
+        f"- Files: **{s['files']}**",
+        f"- Dirs: **{s['dirs']}**",
+        f"- Package markers: **{s['package_count']}**",
+        "",
+        "| ext | files |",
+        "|---|---:|",
+    ]
+    for ext, count in s["top_extensions"][:12]:
+        lines.append(f"| `{ext}` | {count} |")
+    lines += ["", "## Detected Languages / Stacks", ""]
+    for lang in report.get("languages", [])[:20]:
+        ext_text = ", ".join(f"{k}:{v}" for k, v in lang.get("extensions", {}).items()) or "-"
+        lines.append(f"- **{lang['language']}** files={lang['files']} markers={','.join(lang['markers']) or '-'} extensions={ext_text}")
+    if gi:
+        lines += [
+            "",
+            "## Grepgod Map",
+            "",
+            f"- Functions: **{gi.get('funcmap', {}).get('functions', 0)}**",
+            f"- Call edges: **{gi.get('funcmap', {}).get('edges', 0)}**",
+            f"- Endpoints: **{gi.get('apimap', {}).get('endpoints', 0)}**",
+            f"- Tables: **{gi.get('dbmap', {}).get('tables', 0)}**",
+            f"- Risks: **{gi.get('riskmap', {}).get('total', 0)}**",
+        ]
+    lines += ["", "## Security / Dependency", ""]
+    sec = report.get("security", {})
+    if sec:
+        mark = "PASS" if sec.get("ok") else ("SKIP" if sec.get("ok") is None else "FAIL")
+        lines.append(f"- **{mark}** `{sec.get('engine')}` — {sec.get('summary')}")
+    else:
+        lines.append("_No security scan run._")
+    lines += ["", "## Available Debug Engines", ""]
+    for e in report.get("recommended_engines", [])[:14]:
+        lines.append(f"- `{e['engine']}` ({e['stack']}) — {e['why']}")
+    lines += ["", "## Checks", ""]
+    for c in report.get("checks", []):
+        mark = "PASS" if c["ok"] else "FAIL"
+        lines.append(f"- **{mark}** `{ ' '.join(c['cmd']) }` ({c['seconds']}s)")
+    if not report.get("checks"):
+        lines.append("_No checks run._")
+    lines += ["", "## Next 5 Fixes", ""]
+    for fix in report.get("next_fixes", []):
+        lines.append(f"{fix['priority']}. **{fix['title']}** — `{fix['target']}` ({fix['reason']})")
+    lines += ["", "## Highest Impact Dirty Files", ""]
+    for row in h.get("top_changed", [])[:20]:
+        lines.append(
+            f"- `{row.get('path')}` score={row.get('score', 0)} "
+            f"risks={row.get('nearby_risks', 0)} fanin={row.get('max_fanin', 0)}"
+        )
+    lines += [
+        "",
+        "## AI Handoff",
+        "",
+        "Read this report first, then inspect `.grepgod/MAP.md` if it exists. "
+        "Start with failing checks, then high-impact dirty files, then high-risk map findings.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def ai_brief(report: dict) -> str:
+    h = report["health"]
+    gi = report.get("grepgod_index", {})
+    checks = report.get("checks", [])
+    failing = [c for c in checks if not c.get("ok")]
+    top = h.get("top_changed", [])[:8]
+    return "\n".join(
+        [
+            "# Debugmaster AI Brief",
+            "",
+            f"Verdict: {report['verdict']}",
+            f"Repo: {report['repo']}",
+            f"Identity: branch={report.get('identity', {}).get('branch', '')} head={report.get('identity', {}).get('head', '')}",
+            f"Health: {h.get('status')} via {h.get('engine')} · dirty={h.get('changed_files')} · impact={h.get('impact')}",
+            f"Structure: packages={report['structure']['package_count']} · files={report['structure']['files']}",
+            "Languages: " + ", ".join(l["language"] for l in report.get("languages", [])[:8]),
+            f"Map: funcs={gi.get('funcmap', {}).get('functions', 0)} edges={gi.get('funcmap', {}).get('edges', 0)} risks={gi.get('riskmap', {}).get('total', 0)}",
+            f"Checks: {len(checks) - len(failing)}/{len(checks)} passed",
+            f"Security: {report.get('security', {}).get('summary', 'not run')}",
+            "",
+            "Next 5 fixes:",
+            *[
+                f"- {f['title']}: {f['target']} ({f['reason']})"
+                for f in report.get("next_fixes", [])
+            ],
+            "",
+            "Next focus files:",
+            *[
+                f"- {r.get('path')} score={r.get('score', 0)} risks={r.get('nearby_risks', 0)}"
+                for r in top
+            ],
+            "",
+            "Instruction: fix failing checks first, then highest impact dirty files. Do not revert unrelated user changes.",
+            "",
+        ]
+    )
 
 
 def cmd_scan(args) -> int:
@@ -181,6 +698,74 @@ def cmd_engines(_args) -> int:
     return 0
 
 
+def cmd_init(args) -> int:
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / ".gitignore").write_text("*\n!.gitignore\n")
+    tools = {
+        name: command_available(name)
+        for name in ("python3", "git", "grepgod", "rg", "jq", "semgrep", "gitleaks", "osv-scanner", "cargo", "pytest", "just", "node", "repovista")
+    }
+    if args.link:
+        target = Path.home() / ".local" / "bin"
+        target.mkdir(parents=True, exist_ok=True)
+        link = target / "debugmaster"
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to(ROOT / "bin" / "debugmaster")
+    print(json.dumps({"ok": tools.get("python3") and tools.get("git"), "tools": tools, "reports": str(REPORTS)}, indent=2))
+    if not tools.get("grepgod"):
+        print("debugmaster: grepgod not found; standalone fallback remains available.", file=sys.stderr)
+    return 0 if tools.get("python3") and tools.get("git") else 2
+
+
+def cmd_all(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    out_dir = Path(args.out).expanduser().resolve() if args.out else REPORTS / repo.name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if args.full_map and os.environ.get("DEBUGMASTER_NO_GREPGOD") != "1" and shutil.which("grepgod"):
+        subprocess.run(["grepgod", "--chain", "map", str(repo)], check=False)
+    h = health(repo)
+    report = {
+        "repo": str(repo),
+        "identity": repo_identity(repo),
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "health": h,
+        "structure": structure(repo),
+        "languages": detected_languages(repo),
+        "grepgod_index": {} if os.environ.get("DEBUGMASTER_NO_GREPGOD") == "1" else load_grepgod_index(repo),
+        "checks": [] if args.no_checks else run_checks(repo, args.timeout),
+        "security": {} if args.no_security else run_security(repo, args.timeout),
+        "recommended_engines": stack_engines(repo),
+        "repovista_reference": {
+            "package": "repovista",
+            "latest_seen": "0.5.1",
+            "published_seen": "2026-05-29",
+            "concepts_adapted": ["read-only audit", "markdown + machine-readable reports", "provider/engine metadata", "AI handoff artifact"],
+        },
+        "engines": {
+            "catalog_tools": len(load_json(CATALOG, {"tools": []}).get("tools", [])),
+            "available": {
+                name: command_available(name)
+                for name in ("grepgod", "git", "rg", "jq", "semgrep", "gitleaks", "osv-scanner", "cargo", "pytest", "just", "node", "repovista")
+            },
+        },
+    }
+    report["verdict"] = verdict(report)
+    report["next_fixes"] = next_fixes(report)
+    (out_dir / "debugmaster-report.json").write_text(json.dumps(report, indent=2))
+    (out_dir / "debugmaster-report.md").write_text(markdown_report(report))
+    (out_dir / "debugmaster-ai-brief.md").write_text(ai_brief(report))
+    print(json.dumps({
+        "verdict": report["verdict"],
+        "repo": str(repo),
+        "out": str(out_dir),
+        "checks": f"{sum(1 for c in report['checks'] if c['ok'])}/{len(report['checks'])}",
+        "dirty_files": h.get("changed_files"),
+        "impact": h.get("impact"),
+    }, indent=2))
+    return 0 if report["verdict"] != "FAIL" else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="debugmaster")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -211,6 +796,19 @@ def main() -> int:
 
     engines = sub.add_parser("engines")
     engines.set_defaults(func=cmd_engines)
+
+    init = sub.add_parser("init")
+    init.add_argument("--link", action="store_true", help="symlink debugmaster into ~/.local/bin")
+    init.set_defaults(func=cmd_init)
+
+    all_cmd = sub.add_parser("all")
+    all_cmd.add_argument("repo", nargs="?", default=".")
+    all_cmd.add_argument("--out", default="")
+    all_cmd.add_argument("--timeout", type=int, default=120)
+    all_cmd.add_argument("--no-checks", action="store_true")
+    all_cmd.add_argument("--no-security", action="store_true")
+    all_cmd.add_argument("--full-map", action=argparse.BooleanOptionalAction, default=True)
+    all_cmd.set_defaults(func=cmd_all)
 
     args = ap.parse_args()
     return args.func(args)

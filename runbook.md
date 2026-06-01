@@ -5,6 +5,8 @@ Use this when entering an unfamiliar or dirty codebase.
 ## 1. Build The Atlas
 
 ```bash
+debugmaster/bin/debugmaster init
+debugmaster/bin/debugmaster all . --timeout 120
 debugmaster/bin/debugmaster scan .
 debugmaster/bin/debugmaster codex-brief .
 grepgod --chain map .
@@ -13,6 +15,8 @@ grepgod --chain map .
 Read first:
 
 ```text
+debugmaster/reports/<repo>/debugmaster-report.md
+debugmaster/reports/<repo>/debugmaster-ai-brief.md
 .grepgod/MAP.md
 .grepgod/healthmap.md
 .grepgod/riskmap.md

@@ -41,6 +41,15 @@
       "path": "/Users/master/projects/cmux-vault/debugmaster/bin/debugmaster",
       "catalog": "/Users/master/projects/cmux-vault/debugmaster/debugger-engines.json",
       "purpose": "Standalone multi-engine debug orchestrator using grepgod when available and local fallback otherwise"
+    },
+    {
+      "name": "repovista",
+      "kind": "npm_reference",
+      "version_seen": "0.5.1",
+      "published_seen": "2026-05-29",
+      "repository": "https://github.com/nordbyte/RepoVista",
+      "homepage": "https://repovista.com",
+      "purpose": "Read-only AI-powered repository audit reports from local provider CLIs; used as report-artifact design reference"
     }
   ],
   "grepgod_runtime_scripts": [
