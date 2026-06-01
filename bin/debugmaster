@@ -291,16 +291,25 @@ def load_json(path: Path, default):
         return default
 
 
+def is_git_repo(repo: Path) -> bool:
+    try:
+        cp = run(["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"], timeout=5)
+        return cp.returncode == 0 and cp.stdout.strip() == "true"
+    except (FileNotFoundError, PermissionError, OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def repo_identity(repo: Path) -> dict:
     remotes = []
-    if (repo / ".git").exists():
+    is_git = is_git_repo(repo)
+    if is_git:
         cp = run(["git", "-C", str(repo), "remote", "-v"])
         for line in cp.stdout.splitlines():
             parts = line.split()
             if len(parts) >= 3 and parts[2] == "(fetch)":
                 remotes.append({"name": parts[0], "url": parts[1]})
-    branch = run(["git", "-C", str(repo), "branch", "--show-current"]) if (repo / ".git").exists() else None
-    head = run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"]) if (repo / ".git").exists() else None
+    branch = run(["git", "-C", str(repo), "branch", "--show-current"]) if is_git else None
+    head = run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"]) if is_git else None
     return {
         "name": repo.name,
         "path": str(repo),
@@ -311,7 +320,7 @@ def repo_identity(repo: Path) -> dict:
 
 
 def git_changed(repo: Path) -> list[dict[str, str]]:
-    if not (repo / ".git").exists():
+    if not is_git_repo(repo):
         return []
     cp = run(["git", "-C", str(repo), "status", "--porcelain=v1", "-uall"])
     rows = []
@@ -482,7 +491,7 @@ def stack_engines(repo: Path, languages: list[dict] | None = None) -> list[dict]
 
 
 def detect_checks(repo: Path, profile: str = "safe", languages: list[dict] | None = None) -> list[list[str]]:
-    checks: list[list[str]] = [["git", "diff", "--check"]] if (repo / ".git").exists() else []
+    checks: list[list[str]] = [["git", "diff", "--check"]] if is_git_repo(repo) else []
     justfile = repo / "justfile"
     if justfile.exists() and command_available("just"):
         text = justfile.read_text(errors="ignore")
