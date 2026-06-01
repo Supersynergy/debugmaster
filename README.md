@@ -10,6 +10,10 @@ Use this folder as the first stop when you need to scan an existing project, und
 debugmaster/bin/debugmaster init
 debugmaster/bin/debugmaster all . --timeout 60
 debugmaster/bin/debugmaster flows
+debugmaster/bin/debugmaster batch --root /Users/master/machinelearning --limit 5 --random --no-security --no-checks --no-full-map
+debugmaster/bin/debugmaster mine . --query "repo healthmap codegraph debugging"
+debugmaster/bin/debugmaster autofix .
+debugmaster/bin/debugmaster init-ci .
 debugmaster/bin/debugmaster scan .
 debugmaster/bin/debugmaster codex-brief .
 debugmaster/bin/debugmaster catalog race
@@ -61,6 +65,8 @@ ghmax --repos "code graph static analysis" --stars-min 100 -n 8 --sort stars
 | `github-tools.md` | GitHub/Gitea tools and repos found |
 | `runbook.md` | Practical debugging workflow |
 | `debug-flows.md` | Top Debugmaster flows for typical repo, stack, runtime, UI, security, and monorepo failures |
+| `CHEATSHEET.md` | Install, scan, batch, PR-report, ghmax, autofix, and Linux smoke commands |
+| `RELEASE-READINESS.md` | Verification evidence for local, Linux/Ubuntu, ghmax, and 5 random ML repo scans |
 | `CODEX.md` | Codex-specific usage rules and copy-paste prompt |
 | `marketdeck-scan.md` | Results from running Debugmaster on local git.marketdeck.io repos |
 | `bin/debugmaster-scan` | Repeatable healthmap scan script |
@@ -74,6 +80,10 @@ debugmaster/install.sh --link
 debugmaster all . --timeout 60
 debugmaster/bin/debugmaster engines
 debugmaster/bin/debugmaster flows --json
+debugmaster/bin/debugmaster batch --root /path/to/repos --limit 5 --random
+debugmaster/bin/debugmaster mine . --query "debugging codegraph healthmap"
+debugmaster/bin/debugmaster autofix . --apply
+debugmaster/bin/debugmaster init-ci .
 debugmaster/bin/debugmaster scan /Users/master/projects/supersynergycrmpro /Users/master/projects/WINvestmentMAXIM
 debugmaster/bin/debugmaster repo /Users/master/projects/supersynergycrmpro --full
 debugmaster/bin/debugmaster top-risk /Users/master/projects/mdviewy -n 10
@@ -109,6 +119,10 @@ Includes:
 - security/dependency scan via `grepgod --chain security` when available
 - detected build/test/check commands
 - available debug engines by stack
+- optional ghmax reference repo and pattern mining via `--ghmax` or `debugmaster mine`
+- optional safe autofix dry-run/apply mode via `debugmaster autofix`
+- batch reports for many repos via `debugmaster batch`
+- GitHub pull-request report workflow template via `debugmaster init-ci`
 - clear `PASS` / `WARN` / `FAIL` verdict
 - next 5 fixes for Codex/Claude
 

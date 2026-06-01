@@ -1,0 +1,38 @@
+name: Debugmaster
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run Debugmaster
+        run: |
+          python3 debugmaster/bin/debugmaster all . \
+            --out debugmaster-report \
+            --timeout 120 \
+            --no-security \
+            --no-full-map
+
+      - name: Upload Debugmaster report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debugmaster-report
+          path: |
+            debugmaster-report/debugmaster-report.md
+            debugmaster-report/debugmaster-report.json
+            debugmaster-report/debugmaster-ai-brief.md

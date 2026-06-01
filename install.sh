@@ -16,7 +16,7 @@ Usage: debugmaster/install.sh [--link] [--prefix=DIR]
 
 Requirements:
   required: python3, git
-  optional: grepgod, rg, jq, semgrep, gitleaks, osv-scanner, cargo, pytest, just
+  optional: grepgod, ghmax, rg, jq, semgrep, gitleaks, osv-scanner, cargo, pytest, just, node
 
 --link      symlink debugmaster into PREFIX (default ~/.local/bin)
 EOF

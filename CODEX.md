@@ -5,10 +5,9 @@ Use this file when Codex enters a repo and needs fast orientation before editing
 ## Default Codex Debug Loop
 
 ```bash
-grepgod --chain map .
-grepgod healthmap .
-grepgod ask . "risks"
-grepgod ask . "hotspots"
+debugmaster all . --timeout 120
+debugmaster flows
+debugmaster autofix .
 git status --short --branch
 ```
 
@@ -16,6 +15,13 @@ If there is a concrete failure:
 
 ```bash
 grepgod debug . "<paste exact error or stacktrace>"
+```
+
+If external reference patterns would help:
+
+```bash
+debugmaster mine . --query "<stack> <failure> debugging"
+debugmaster all . --ghmax --ghmax-query "<stack> <failure> fix"
 ```
 
 If the repo is security/dependency sensitive:
@@ -28,6 +34,8 @@ grepgod --chain security
 
 - Read `.grepgod/MAP.md` before broad file reading.
 - Use `.grepgod/healthmap.json` to identify dirty high-impact files.
+- Prefer `debugmaster-report.json` and `debugmaster-ai-brief.md` as the first handoff files.
+- Run `debugmaster autofix .` as dry-run before any broad cleanup.
 - Do not commit `.grepgod/` or `.codegraph/` generated output unless explicitly requested.
 - Do not revert dirty files from the user.
 - Commit only the scoped files requested by the user.
@@ -36,7 +44,7 @@ grepgod --chain security
 ## Copy-Paste Prompt
 
 ```text
-Use Debugmaster: run grepgod healthmap and map first, read .grepgod/MAP.md, rank dirty files by impact score, inspect risks/hotspots with grepgod ask, then make the smallest scoped fix. Verify with the repo's real checks and commit only the intended files.
+Use Debugmaster: run `debugmaster all . --timeout 120`, read `debugmaster-report.md` and `debugmaster-ai-brief.md`, rank failing checks and dirty files, use `debugmaster mine` when outside references help, run `debugmaster autofix .` as dry-run before safe cleanup, then make the smallest scoped fix. Verify with the repo's real checks and commit only the intended files.
 ```
 
 ## Codex Commit Pattern
