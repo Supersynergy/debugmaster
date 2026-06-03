@@ -1,16 +1,19 @@
-# debugmaster-rs
+# debugmaster
 
 > Single-binary bug hunter. Static + **business-logic** detectors over tree-sitter ASTs.
-> No runtime, no Python, no install — one file, runs anywhere.
+> Rust-first `debugmaster`; Python legacy capability lives behind `debugmastery`.
 
-A ground-up Rust rebuild of [debugmaster](https://git.marketdeck.io/Supersynergy/debugmaster)
-where **distribution is the priority**: `cargo build --release` produces a single
-~2.7 MB binary that depends only on `libSystem` — drop it into any CI or machine and run.
+A ground-up Rust rebuild of the original Python `debugmaster`, now named
+`debugmastery`. Distribution is the priority: `cargo build --release` produces a
+single binary that depends only on `libSystem` — drop it into any CI or machine
+and run.
 
 ```bash
 debugmaster hunt .            # ranked findings, human output
 debugmaster hunt . --json     # machine output
 debugmaster hunt . -n 30      # top 30
+debugmaster sessions -q codex # search Codex/Claude JSONL sessions
+debugmaster doctor            # forwarded to debugmastery until natively ported
 ```
 
 ## The moat: bugs linters can't see
@@ -45,6 +48,11 @@ check, `construct_event`, explicit kwargs, server-side amount lookup, `Decimal`)
   overhead (the Python build had to fork around the GIL).
 - **Exact spans.** tree-sitter gives real function/call boundaries, so the
   business-logic guards run on precise node text, not line heuristics.
+- **Session visibility.** `debugmaster sessions` reads `~/.codex/sessions` and
+  `~/.claude/projects` JSONL transcripts directly, including nested Codex rollout
+  paths.
+- **Parity bridge.** Python-era commands are still usable through the Rust binary:
+  unknown subcommands are forwarded to `debugmastery` with the same arguments.
 
 ## Build
 
@@ -54,9 +62,12 @@ cargo test                 # unit tests (detectors + FP guards)
 cargo clippy --all-targets -- -D warnings
 ```
 
-## Roadmap
+## Parity
 
-This is the foundation (the `hunt` engine + full moat). Porting next from the Python
-original, in priority order: `audit` (graded health + release gate), `profile`
-(runtime leak/bottleneck/orphan diagnostician), `mcp` (agent server), suppression
-(`.debugmaster-ignore`), and multi-language AST detectors (JS/Go via their grammars).
+Native Rust today: `hunt`, `sessions`.
+
+Forwarded through `debugmastery` today: `fusion`, `learn-feedback`, `learn-stats`,
+`scan-bugs`, `doctor`, `mcp`, `checks`, `watch`, `regress`, `profile`, `audit`,
+`review`, `bisect`, `explain`, `fix-verify`, `install-hooks`, `scan`, `repo`,
+`top-risk`, `codex-brief`, `catalog`, `engines`, `flows`, `init`,
+`engines-install`, `autofix`, `mine`, `batch`, `init-ci`, and `all`.

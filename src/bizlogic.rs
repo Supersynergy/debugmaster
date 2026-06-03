@@ -11,7 +11,10 @@ use tree_sitter::{Node, Parser};
 
 macro_rules! rx {
     ($name:ident, $p:expr) => {
-        static $name: LazyLock<Regex> = LazyLock::new(|| Regex::new($p).unwrap());
+        static $name: LazyLock<Regex> = LazyLock::new(|| match Regex::new($p) {
+            Ok(re) => re,
+            Err(err) => panic!("invalid bizlogic regex `{}`: {}", $p, err),
+        });
     };
 }
 

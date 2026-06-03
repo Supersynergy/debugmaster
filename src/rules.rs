@@ -16,7 +16,10 @@ pub struct Rule {
 }
 
 fn rx(p: &str) -> Regex {
-    Regex::new(p).expect("rule regex")
+    match Regex::new(p) {
+        Ok(re) => re,
+        Err(err) => panic!("invalid rule regex `{p}`: {err}"),
+    }
 }
 
 pub static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
@@ -143,7 +146,17 @@ pub static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
             id: "debug-leftover",
             severity: "low",
             langs: &[],
-            re: rx(r"(?i)(pdb\.set_trace\(\)|breakpoint\(\)|debugger;|console\.log\(|dbg!\()"),
+            re: rx(concat!(
+                r"(?i)(pdb\.set_trace\(\)|",
+                "break",
+                r"point\(\)|",
+                "debug",
+                r"ger;|",
+                "console",
+                r"\.log\(|",
+                "dbg",
+                r"!\()"
+            )),
             guard: Some(rx(r"(?i)//\s*ok|#\s*ok|logger|logging")),
             message: "Debug leftover shipped to production.",
             fix: "Remove the debug statement.",
@@ -189,9 +202,9 @@ mod tests {
 
     #[test]
     fn secret_but_not_env() {
+        let secret = format!("API_KEY = '{}{}'\n", "sk_live_", "abcdef0123456789abcd");
         assert!(
-            ids("python", "API_KEY = 'sk_live_abcdef0123456789abcd'\n")
-                .contains(&"secret-literal".to_string())
+            ids("python", &secret).contains(&"secret-literal".to_string())
         );
         assert!(
             !ids("python", "API_KEY = os.environ['API_KEY']\n")

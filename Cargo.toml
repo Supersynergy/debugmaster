@@ -1,6 +1,6 @@
 [package]
-name = "debugmaster-rs"
-version = "0.1.0"
+name = "debugmaster"
+version = "0.8.0"
 edition = "2024"
 description = "Single-binary bug hunter — static + business-logic detectors over tree-sitter ASTs"
 license = "MIT"

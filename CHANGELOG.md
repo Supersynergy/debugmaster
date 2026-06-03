@@ -1,6 +1,42 @@
 # Changelog
 
-All notable changes to debugmaster-rs are documented here. Semantic Versioning.
+All notable changes to debugmaster are documented here. Semantic Versioning.
+
+## [0.8.0] - 2026-06-03
+
+Rust becomes the primary `debugmaster` command. The previous Python CLI is kept
+as `debugmastery` and remains available as a legacy fallback.
+
+### Added
+
+- **`sessions`** — native Rust reader for Codex and Claude JSONL transcripts.
+  Defaults to `~/.codex/sessions` and `~/.claude/projects`, supports query,
+  JSON output, custom roots, and newest-first result ordering.
+- **Legacy parity bridge** — unknown Python-era subcommands are forwarded to
+  `debugmastery` with the same arguments. This keeps `doctor`, `audit`,
+  `review`, `profile`, `codex-brief`, `mcp`, and the rest of the Python surface
+  usable while native Rust ports continue.
+- Integration tests for Codex-style session JSONL parsing and `debugmastery`
+  forwarding.
+- Self-hunt regression test that requires the Rust crate to scan cleanly before
+  shipping.
+
+### Changed
+
+- Package renamed from `debugmaster-rs` to `debugmaster`.
+- Version bumped to `0.8.0`, above the Python `debugmastery` line at `0.7.1`.
+- Regex initialization and JSON output paths no longer use `unwrap()`/`expect()`.
+- Rule fixtures and debug-pattern definitions no longer trigger their own
+  scanner rules.
+- Local scanner outputs (`.debugmaster`, `.grepgod`, `.repovista`) are ignored.
+
+### Verification
+
+- `cargo test`
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo build --release`
+- `debugmaster hunt /Users/master/projects/debugmaster --json -n 100`
+- `debugmastery hunt /Users/master/projects/debugmaster --profile fast --no-fuse --json -n 100 --timeout 20`
 
 ## [0.1.0] - 2026-06-03
 
