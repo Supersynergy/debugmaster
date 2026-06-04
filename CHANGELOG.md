@@ -29,6 +29,8 @@ as `debugmastery` and remains available as a legacy fallback.
 - Rule fixtures and debug-pattern definitions no longer trigger their own
   scanner rules.
 - Local scanner outputs (`.debugmaster`, `.grepgod`, `.repovista`) are ignored.
+- Repository release polish: MIT license, contributing guide, security policy,
+  code of conduct, Just recipes, Cargo metadata, and social-preview brief.
 
 ### Verification
 
@@ -37,6 +39,7 @@ as `debugmastery` and remains available as a legacy fallback.
 - `cargo build --release`
 - `debugmaster hunt /Users/master/projects/debugmaster --json -n 100`
 - `debugmastery hunt /Users/master/projects/debugmaster --profile fast --no-fuse --json -n 100 --timeout 20`
+- `just check`
 
 ## [0.1.0] - 2026-06-03
 

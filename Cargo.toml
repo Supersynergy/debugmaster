@@ -4,6 +4,11 @@ version = "0.8.0"
 edition = "2024"
 description = "Single-binary bug hunter — static + business-logic detectors over tree-sitter ASTs"
 license = "MIT"
+repository = "https://github.com/Supersynergy/debugmaster"
+homepage = "https://github.com/Supersynergy/debugmaster"
+readme = "README.md"
+keywords = ["debugging", "static-analysis", "security", "tree-sitter"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "debugmaster"
