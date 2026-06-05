@@ -58,8 +58,36 @@ pub fn source_files(root: &Path, limit: usize) -> Vec<(PathBuf, &'static str)> {
 }
 
 pub fn rel(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
+    let stripped = path.strip_prefix(root).unwrap_or(path);
+    if stripped.as_os_str().is_empty() {
+        // path == root (single-file scan): fall back to basename, then full path.
+        path.file_name()
+            .unwrap_or(path.as_os_str())
+            .to_string_lossy()
+            .to_string()
+    } else {
+        stripped.to_string_lossy().to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn rel_single_file_returns_basename() {
+        let p = Path::new("/tmp/foo/bar.py");
+        // When root == path (single-file scan), rel must return the basename, not "".
+        let result = rel(p, p);
+        assert_eq!(result, "bar.py");
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn rel_directory_scan_returns_relative_path() {
+        let root = Path::new("/tmp/foo");
+        let path = Path::new("/tmp/foo/src/bar.py");
+        assert_eq!(rel(root, path), "src/bar.py");
+    }
 }

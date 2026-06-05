@@ -48,7 +48,10 @@ fn sessions_reads_codex_jsonl_transcripts() -> Result<(), Box<dyn std::error::Er
     let stdout = String::from_utf8(output.stdout)?;
     assert!(stdout.contains("\"sessions_scanned\": 1"), "{stdout}");
     assert!(stdout.contains("\"matches\": 1"), "{stdout}");
-    assert!(stdout.contains("fix the debugmaster codex session reader"), "{stdout}");
+    assert!(
+        stdout.contains("fix the debugmaster codex session reader"),
+        "{stdout}"
+    );
     Ok(())
 }
 
@@ -68,7 +71,11 @@ fn legacy_commands_forward_to_debugmastery() -> Result<(), Box<dyn std::error::E
         fs::set_permissions(&shim, perms)?;
     }
 
-    let path = format!("{}:{}", root.display(), std::env::var("PATH").unwrap_or_default());
+    let path = format!(
+        "{}:{}",
+        root.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     let output = Command::new(bin())
         .args(["doctor", "--json"])
         .env("PATH", path)

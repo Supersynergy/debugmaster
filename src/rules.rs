@@ -203,9 +203,7 @@ mod tests {
     #[test]
     fn secret_but_not_env() {
         let secret = format!("API_KEY = '{}{}'\n", "sk_live_", "abcdef0123456789abcd");
-        assert!(
-            ids("python", &secret).contains(&"secret-literal".to_string())
-        );
+        assert!(ids("python", &secret).contains(&"secret-literal".to_string()));
         assert!(
             !ids("python", "API_KEY = os.environ['API_KEY']\n")
                 .contains(&"secret-literal".to_string())

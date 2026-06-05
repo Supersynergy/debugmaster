@@ -2,6 +2,29 @@
 
 All notable changes to debugmaster are documented here. Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- Bumped to Rust 1.96.0 toolchain (edition 2024 unchanged). Verified: `cargo clippy
+  --release --all-targets --all-features -- -D warnings` clean, 15/15 tests pass.
+- Dependency updates: `tree-sitter` 0.25 → 0.26.9, `tree-sitter-python` 0.23 → 0.25.0
+  (both major bumps, no API breaks), `ignore` 0.4.25 → 0.4.26. Cargo 1.96 also
+  resolves CVE-2026-5222 / CVE-2026-5223.
+
+### Fixed
+
+- `hunt` single-file scan: `walk::rel` now returns the file's basename instead of
+  an empty string when the scanned path equals the root (single-file input). Every
+  finding's `file` field is now non-empty regardless of invocation mode.
+
+### Removed
+
+- Dropped unused `anyhow` dependency (0 references in `src/`, confirmed via
+  `cargo machete`; gone from `Cargo.lock` entirely, not even transitive). Applied
+  `cargo fmt`. Verified: `cargo check`, `cargo clippy --all-targets --all-features
+  -- -D warnings` clean, 15/15 tests pass.
+
 ## [0.8.0] - 2026-06-03
 
 Rust becomes the primary `debugmaster` command. The previous Python CLI is kept

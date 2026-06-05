@@ -12,13 +12,18 @@ use std::process::ExitCode;
 
 /// Single-binary bug hunter: static + business-logic detectors over tree-sitter ASTs.
 #[derive(Parser)]
-#[command(name = "debugmaster", version, about, after_help = "\
+#[command(
+    name = "debugmaster",
+    version,
+    about,
+    after_help = "\
 Native Rust: hunt, sessions.
 Legacy parity: unknown commands are forwarded to `debugmastery` with the same args.
 Python legacy command surface: fusion, learn-feedback, learn-stats, scan-bugs, doctor, mcp,
 checks, watch, regress, profile, audit, review, bisect, explain, fix-verify,
 install-hooks, scan, repo, top-risk, codex-brief, catalog, engines, flows, init,
-engines-install, autofix, mine, batch, init-ci, all.")]
+engines-install, autofix, mine, batch, init-ci, all."
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
