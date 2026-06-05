@@ -4,6 +4,19 @@ All notable changes to debugmaster are documented here. Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- **CI** — `.github/workflows/ci.yml` (read by both GitHub and Gitea runners):
+  fmt-check, clippy `-D warnings`, tests, release build, self-hunt dogfood, plus a
+  `cargo-deny` job (advisories + licenses).
+- **`rust-toolchain.toml`** pins the toolchain to Rust 1.96.0 (rustfmt + clippy);
+  `rust-version = "1.96"` declares the MSRV.
+- **`deny.toml`** — supply-chain gate (RUSTSEC advisories, license allow-list,
+  source pinning). Run via `just audit` / `just pre-pr`.
+- **`AGENTS.md`** — build/verify/layout/convention guide for agents and contributors.
+- `justfile`: new `fmt`, `audit`, and `pre-pr` recipes; `ci` now runs
+  `doctor` + full `check` (fmt + test + clippy + build + self-hunt).
+
 ### Changed
 
 - Bumped to Rust 1.96.0 toolchain (edition 2024 unchanged). Verified: `cargo clippy
@@ -14,6 +27,10 @@ All notable changes to debugmaster are documented here. Semantic Versioning.
 
 ### Fixed
 
+- `hunt` no longer reports a missing or empty path as `CLEAN` (false-negative for a
+  security tool). A non-existent path now errors to stderr and exits `2`; an existing
+  path with zero source files reports the distinct `NO_FILES` verdict (exit `0`).
+  Covered by two new end-to-end tests.
 - `hunt` single-file scan: `walk::rel` now returns the file's basename instead of
   an empty string when the scanned path equals the root (single-file input). Every
   finding's `file` field is now non-empty regardless of invocation mode.

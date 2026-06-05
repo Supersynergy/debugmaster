@@ -75,6 +75,10 @@ fn main() -> ExitCode {
             limit,
             top,
         } => {
+            if !path.exists() {
+                eprintln!("debugmaster: path not found: {}", path.display());
+                return ExitCode::from(2);
+            }
             let report = hunt::hunt(&path, limit, top);
             if json {
                 print_json(&report);
@@ -82,7 +86,7 @@ fn main() -> ExitCode {
                 print!("{}", hunt::markdown(&report));
             }
             match report.verdict.as_str() {
-                "CLEAN" | "WARN" => ExitCode::SUCCESS,
+                "CLEAN" | "WARN" | "NO_FILES" => ExitCode::SUCCESS,
                 _ => ExitCode::FAILURE,
             }
         }

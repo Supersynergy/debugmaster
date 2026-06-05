@@ -88,6 +88,36 @@ fn legacy_commands_forward_to_debugmastery() -> Result<(), Box<dyn std::error::E
 }
 
 #[test]
+fn hunt_nonexistent_path_errors_not_clean() -> Result<(), Box<dyn std::error::Error>> {
+    let missing = std::env::temp_dir().join("debugmaster-does-not-exist-zzz-9988");
+    let output = Command::new(bin())
+        .args(["hunt", &missing.display().to_string()])
+        .output()?;
+
+    // A wrong path must fail loudly, never read as a passing scan.
+    assert!(!output.status.success(), "{output:?}");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains("path not found"), "{stderr}");
+    Ok(())
+}
+
+#[test]
+fn hunt_empty_dir_is_no_files_not_clean() -> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_root("empty")?;
+    let output = Command::new(bin())
+        .args(["hunt", &root.display().to_string(), "--json"])
+        .output()?;
+
+    // Existing dir with zero source files is reported distinctly from CLEAN.
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(stdout.contains("\"verdict\": \"NO_FILES\""), "{stdout}");
+    assert!(stdout.contains("\"files_scanned\": 0"), "{stdout}");
+    Ok(())
+}
+
+#[test]
 fn self_hunt_stays_clean_enough_to_ship() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(COVERED_MODULES, ["main", "rules", "bizlogic"]);
     let output = Command::new(bin())

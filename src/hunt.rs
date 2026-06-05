@@ -45,7 +45,11 @@ pub fn hunt(root: &Path, limit: usize, top: usize) -> Report {
     for f in &all {
         *by_severity.entry(f.severity.clone()).or_insert(0) += 1;
     }
-    let verdict = if by_severity.contains_key("critical") {
+    let verdict = if files.is_empty() {
+        // No source files matched — distinct from CLEAN so a mistyped or
+        // wrong path is never reported as a passing scan.
+        "NO_FILES"
+    } else if by_severity.contains_key("critical") {
         "CRITICAL"
     } else if by_severity.contains_key("high") {
         "FAIL"
@@ -75,6 +79,13 @@ pub fn markdown(r: &Report) -> String {
         "Verdict: **{}** · {} findings · {} files\n\n",
         r.verdict, r.total, r.files_scanned
     ));
+    if r.verdict == "NO_FILES" {
+        s.push_str(
+            "No source files matched in this path. Nothing was scanned — \
+             this is **not** a clean bill of health. Check the path is correct.\n",
+        );
+        return s;
+    }
     s.push_str("## Top suspects\n\n");
     if r.findings.is_empty() {
         s.push_str("- none — clean.\n");
