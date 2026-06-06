@@ -38,7 +38,9 @@ check:
     cargo test
     cargo clippy --all-targets --all-features -- -D warnings
     cargo build --release
-    ./target/release/debugmaster hunt . --json
+    # Dogfood the native scanner on our own Rust code. Scan `src/` — not the repo
+    # root — because the bundled `engine/` ships planted-bug test fixtures.
+    ./target/release/debugmaster hunt src --json
 
 ci: doctor check
 

@@ -49,8 +49,9 @@ jobs:
       - name: Build (release)
         run: cargo build --release
 
-      - name: Self-hunt (dogfood)
-        run: ./target/release/debugmaster hunt . --json
+      - name: Self-hunt (dogfood native Rust code)
+        # Scan src/ only — the bundled engine/ carries planted-bug test fixtures.
+        run: ./target/release/debugmaster hunt src --json
 
   audit:
     name: cargo-deny (advisories + licenses)
