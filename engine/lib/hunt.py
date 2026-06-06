@@ -97,6 +97,7 @@ def hunt(
     t0 = time.time()
     changed = git_changed(repo)
     changed_set = set(changed)
+    t_dirty = time.time()
 
     # HEAD cache: a clean tree at the same HEAD+profile cannot have changed, so
     # skip the whole pass and return the prior report (huge win on repeated CI runs).
@@ -116,27 +117,32 @@ def hunt(
     static = _combined_static(repo, only, scan_limit)
     # 2c. test-gap: changed source with no covering test (a bug no linter sees)
     static += reach.test_gaps(repo, changed) if changed else []
+    t_static = time.time()
 
     # 3. tool fusion
     fused, scanners = [], []
     if fuse:
         fr = fusion.run(repo, profile=profile, timeout=timeout)
         fused, scanners = fr["findings"], fr["scanners"]
+    t_fusion = time.time()
 
     all_findings = fusion.dedupe(static + fused)
 
     # 3b. suppression: drop accepted/known findings (.debugmaster-ignore + inline
     #     markers) so signal stays high. The count is reported, never hidden.
     all_findings, suppressed = suppress.filter_findings(repo, all_findings)
+    t_supp = time.time()
 
     # 4. history
     mined = gitrisk.mine(repo, max_commits=1500)
     hist = gitrisk.risk_scores(mined)
     cochange = gitrisk.missing_cochange(mined, changed) if changed else []
+    t_hist = time.time()
 
     # 7. learned precision
     rule_ids = {f.rule_id for f in all_findings}
     pmap = learn.precision_map(repo, rule_ids) if rule_ids else {}
+    t_prec = time.time()
 
     # 6. signals -> file risk. Only score candidate files (have findings / dirty /
     #    historically risky) so blast-radius stays cheap.
@@ -158,6 +164,7 @@ def hunt(
             "fan_in": fan.get(f, 0),
         }
     file_risk = riskmodel.score_files(signals)
+    t_risk = time.time()
 
     # 8. rank each finding
     ranked = []
@@ -175,6 +182,47 @@ def hunt(
         d["verify"] = verify_cmd(f.file)
         ranked.append(d)
     ranked.sort(key=lambda d: d["priority"], reverse=True)
+    t_rank = time.time()
+
+    # pipeline flow-trace: every stage with timing + item count, so a report can
+    # show the whole pipeline ran (and where time went), not just the final list.
+    def _ms(a: float, b: float) -> int:
+        return int((b - a) * 1000)
+
+    flow = [
+        {
+            "stage": "1·dirty-set (git porcelain)",
+            "ms": _ms(t0, t_dirty),
+            "items": len(changed),
+        },
+        {
+            "stage": "2·static + business-logic",
+            "ms": _ms(t_dirty, t_static),
+            "items": len(static),
+        },
+        {
+            "stage": "3·tool fusion (scanners)",
+            "ms": _ms(t_static, t_fusion),
+            "items": len(fused),
+        },
+        {
+            "stage": "4·dedupe + suppress",
+            "ms": _ms(t_fusion, t_supp),
+            "items": len(all_findings),
+        },
+        {
+            "stage": "5·git-history mine",
+            "ms": _ms(t_supp, t_hist),
+            "items": len(cochange),
+        },
+        {"stage": "6·learned precision", "ms": _ms(t_hist, t_prec), "items": len(pmap)},
+        {
+            "stage": "7·risk model + reach",
+            "ms": _ms(t_prec, t_risk),
+            "items": len(file_risk),
+        },
+        {"stage": "8·rank", "ms": _ms(t_risk, t_rank), "items": len(ranked)},
+    ]
 
     # risky files (for "where to look even without a concrete finding")
     risky = sorted(file_risk.items(), key=lambda kv: kv[1]["score"], reverse=True)
@@ -198,6 +246,7 @@ def hunt(
         "verdict": verdict,
         "profile": profile,
         "cached": False,
+        "flow": flow,
         "dirty_files": len(changed),
         "totals": {
             "findings": len(all_findings),
@@ -340,6 +389,25 @@ def _verdict(findings, cochange) -> str:
     return "CLEAN"
 
 
+def flow_md(flow: list[dict], suppressed: int | None = None) -> list[str]:
+    """Render the pipeline flow-trace: every stage ran, with timing + item count."""
+    if not flow:
+        return []
+    L = ["", "## Pipeline flow (every stage, no hidden steps)", ""]
+    total = sum(s["ms"] for s in flow)
+    bar_unit = max(total / 24, 1) if total else 1
+    for s in flow:
+        bar = "█" * int(s["ms"] / bar_unit)
+        note = ""
+        if suppressed and s["stage"].startswith("4·"):
+            note = f"  (−{suppressed} suppressed)"
+        L.append(
+            f"- `{s['stage']:<28}` {s['ms']:>5}ms {bar} → {s['items']} items{note}"
+        )
+    L.append(f"- _total pipeline: {total}ms across {len(flow)} stages_")
+    return L
+
+
 def markdown(rep: dict) -> str:
     L = [
         f"# Debugmaster Hunt — {rep['repo']}",
@@ -348,6 +416,9 @@ def markdown(rep: dict) -> str:
         f"dirty {rep['dirty_files']}",
         f"Findings: **{rep['totals']['findings']}** {rep['totals']['by_severity']} · "
         f"co-change suspects {rep['totals']['cochange_suspects']}",
+    ]
+    L += flow_md(rep.get("flow", []), rep["totals"].get("suppressed"))
+    L += [
         "",
         "## Top Suspects (severity × learned-precision × blast-radius)",
         "",

@@ -19,6 +19,8 @@ use std::process::ExitCode;
     version,
     about,
     after_help = "\
+Bare `debugmaster` (or `debugmaster <dir>`) runs the full super-audit — graded
+SHIP/FIX-FIRST/BLOCK verdict, 6-dimension health, and the pipeline flow-trace.
 Native Rust (no interpreter): hunt, sessions, doctor.
 Deep commands run the engine bundled inside this tool (needs python3, no second
 install): `hunt --deep`, audit, review, profile, mcp, watch, fusion, checks,
@@ -28,7 +30,7 @@ engines-install, autofix, mine, batch, init-ci, all."
 )]
 struct Cli {
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
@@ -83,7 +85,13 @@ enum Cmd {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match cli.cmd {
+    // Bare `debugmaster` (no subcommand) runs the full super-audit on the cwd —
+    // the "check everything, all flows visible" default.
+    let cmd = match cli.cmd {
+        Some(c) => c,
+        None => return run_audit(std::ffi::OsStr::new(".")),
+    };
+    match cmd {
         Cmd::Hunt {
             path,
             json,
@@ -147,9 +155,19 @@ fn main() -> ExitCode {
             if args.is_empty() {
                 return ExitCode::SUCCESS;
             }
+            // `debugmaster <path>` (a bare directory, not a known command) is the
+            // super-audit shortcut — same default as bare `debugmaster`.
+            if args.len() == 1 && std::path::Path::new(&args[0]).is_dir() {
+                return run_audit(&args[0]);
+            }
             engine::run(&args)
         }
     }
+}
+
+/// Run the bundled engine's super-audit on `path` (the default "check everything").
+fn run_audit(path: &std::ffi::OsStr) -> ExitCode {
+    engine::run(&[OsString::from("audit"), OsString::from(path)])
 }
 
 fn print_json<T: serde::Serialize>(value: &T) {

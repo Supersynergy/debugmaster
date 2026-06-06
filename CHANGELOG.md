@@ -2,6 +2,24 @@
 
 All notable changes to debugmaster are documented here. Semantic Versioning.
 
+## [0.9.1] — 2026-06-06
+
+Default super-report + pipeline visibility.
+
+### Added
+
+- **Bare `debugmaster` = super-audit.** Running `debugmaster` with no subcommand
+  (or `debugmaster <dir>`) now runs the full graded super-audit on the target —
+  SHIP/FIX-FIRST/BLOCK verdict, 6-dimension health matrix, must-fix list. The
+  "check everything, all flows visible" default. Native `hunt`/`sessions`/`doctor`
+  and all engine subcommands are unchanged.
+- **Pipeline flow-trace** in `audit` and `hunt --deep` reports. A new
+  "Pipeline flow (every stage, no hidden steps)" section renders all 8 stages
+  (dirty-set → static+bizlogic → fusion → dedupe/suppress → git-history →
+  learned-precision → risk-model+reach → rank) with per-stage timing bars and
+  item counts. `hunt()` now returns a `flow` array; `audit` forwards it.
+- `docs/sample-audit-report.md` — a generated example of the best-possible report.
+
 ## [0.9.0] — 2026-06-06
 
 One tool, one folder. The former sibling `debugmastery` Python project is folded

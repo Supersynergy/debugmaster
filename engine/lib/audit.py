@@ -266,6 +266,7 @@ def audit(
         },
         "risky_files": rep.get("risky_files", [])[:8],
         "cochange_suspects": rep.get("cochange_suspects", [])[:6],
+        "flow": rep.get("flow", []),
     }
 
     if save_baseline:
@@ -352,6 +353,7 @@ def markdown(a: dict) -> str:
     if not any_mf:
         L.append("- none — no critical/high/medium findings.")
     cov = a["coverage"]
+    L += hunt.flow_md(a.get("flow", []), cov.get("suppressed"))
     L += [
         "",
         "## Coverage (no silent caps)",
