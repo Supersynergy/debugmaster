@@ -2,6 +2,45 @@
 
 All notable changes to debugmaster are documented here. Semantic Versioning.
 
+## [0.9.0] — 2026-06-06
+
+One tool, one folder. The former sibling `debugmastery` Python project is folded
+in as the bundled `engine/` — there is no longer a second tool to install or keep
+on `PATH`.
+
+### Added
+
+- **Bundled engine (`engine/`).** The full Python analysis engine (18 modules:
+  hunt pipeline, fusion, audit, profile, mcp, learn, gitrisk, …) now ships inside
+  this repo. `src/engine.rs` resolves it from `$DEBUGMASTER_ENGINE`,
+  `~/.debugmaster/engine`, the source tree, or next to the binary, and runs it via
+  `python3`. No `pip`, no second package on `PATH`.
+- **Native `doctor`** (`src/doctor.rs`) — capability self-audit covering the Rust
+  core, the bundled engine + `python3`, and the scanner fusion layer in one report;
+  merges the engine's deeper layer/ML probe when present. Previously forwarded.
+- **`hunt --deep`** — routes to the bundled engine's full pipeline (tool fusion +
+  git-history + learned-precision ranking). Native `hunt` stays the fast Rust scan;
+  the two are now an explicit choice, not two silently-diverging code paths.
+- **`just install`** — builds, links the binary on `PATH`, and stages the engine to
+  `~/.debugmaster/engine` so the installed binary is self-contained.
+- Tests: bundled-engine resolution + "engine command ignores a PATH `debugmastery`
+  sabotage shim" + native-`src/` self-hunt stays CLEAN.
+
+### Changed
+
+- **Parity bridge** no longer shells out to a `debugmastery` binary on `PATH`;
+  unknown/deep subcommands run the bundled engine entry (`engine/bin/debugmaster`)
+  through `python3`.
+- README/`--help` rewritten: honest "native core + bundled engine, no second
+  install" framing replaces the inaccurate "single binary, no Python" claim.
+- Version `0.8.0` → `0.9.0`.
+
+### Removed
+
+- Sibling `debugmastery` project dependency. The standalone project is archived
+  (`~/BASE/archive/debugmastery-folded-into-debugmaster-2026-06-06`); the stale
+  `~/.local/bin/debugmastery` symlink is gone.
+
 ## [Unreleased]
 
 ### Added

@@ -1,0 +1,1611 @@
+#!/usr/bin/env python3
+"""Debugmaster standalone debug orchestrator.
+
+It uses grepgod when available, but keeps a local fallback for repo health,
+catalog lookup, and Codex briefs. The goal is one entrypoint for "debug anything"
+without forcing every future workflow into grepgod.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))  # make the lib/ analysis package importable
+CATALOG = ROOT / "debugger-engines.json"
+TOOLS = ROOT / "tools.json"
+REPORTS = ROOT / "reports"
+TEMPLATES = ROOT / "templates"
+GENERATED_DIRS = {".git", ".grepgod", ".codegraph", ".debugmaster", ".repovista"}
+SKIP_DIRS = {
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "vendor",
+    "vendors",
+    "data",
+    "claude-code-ui",
+}
+MAX_SCAN_FILES = int(os.environ.get("DEBUGMASTER_MAX_SCAN_FILES", "120000"))
+MAX_SHELLCHECK_FILES = int(os.environ.get("DEBUGMASTER_MAX_SHELLCHECK_FILES", "40"))
+LANGUAGE_MATRIX = [
+    {
+        "language": "Rust",
+        "markers": ["Cargo.toml"],
+        "extensions": [".rs"],
+        "checks": [["cargo", "check", "--workspace", "--all-targets"], ["cargo", "test", "--workspace"], ["cargo", "clippy", "--workspace", "--all-targets"]],
+        "engines": ["cargo check", "cargo test", "cargo clippy", "cargo miri", "LLDB/GDB", "cargo flamegraph", "tokio-console"],
+    },
+    {
+        "language": "TypeScript",
+        "markers": ["package.json", "tsconfig.json"],
+        "extensions": [".ts", ".tsx"],
+        "checks": [["npm", "run", "typecheck"], ["npm", "run", "test"], ["npm", "run", "build"]],
+        "engines": ["Biome", "oxlint", "tsc", "Vitest", "Playwright", "Chrome DevTools", "React/Vue/Angular DevTools"],
+    },
+    {
+        "language": "JavaScript",
+        "markers": ["package.json"],
+        "extensions": [".js", ".jsx", ".mjs", ".cjs"],
+        "checks": [["npm", "run", "test"], ["npm", "run", "build"]],
+        "engines": ["Biome", "oxlint", "node --inspect", "Vitest/Jest", "Playwright", "Chrome DevTools"],
+    },
+    {
+        "language": "Go",
+        "markers": ["go.mod"],
+        "extensions": [".go"],
+        "checks": [["go", "test", "./..."], ["go", "test", "-race", "./..."]],
+        "engines": ["golangci-lint", "staticcheck", "Delve", "go test -race", "pprof", "go tool trace"],
+    },
+    {
+        "language": "Python",
+        "markers": ["pyproject.toml", "requirements.txt", "setup.py"],
+        "extensions": [".py"],
+        "checks": [["pytest", "-q"], ["python3", "-m", "compileall", "."]],
+        "engines": ["pytest", "debugpy/pdb", "py-spy", "Scalene", "Hypothesis"],
+    },
+    {
+        "language": "Java",
+        "markers": ["pom.xml", "build.gradle", "build.gradle.kts"],
+        "extensions": [".java"],
+        "checks": [["mvn", "test"], ["gradle", "test"]],
+        "engines": ["JDB", "JFR", "VisualVM", "Async Profiler"],
+    },
+    {
+        "language": "Kotlin",
+        "markers": ["build.gradle.kts", "settings.gradle.kts"],
+        "extensions": [".kt", ".kts"],
+        "checks": [["gradle", "test"]],
+        "engines": ["IntelliJ debugger", "JFR", "Android Studio Profiler"],
+    },
+    {
+        "language": "C/C++",
+        "markers": ["CMakeLists.txt", "Makefile", "meson.build"],
+        "extensions": [".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"],
+        "checks": [["cmake", "--build", "build"], ["make", "test"]],
+        "engines": ["GDB", "LLDB", "Valgrind", "ASan/TSan/UBSan", "perf"],
+    },
+    {
+        "language": "C#/.NET",
+        "markers": ["global.json"],
+        "extensions": [".cs", ".fs", ".vb"],
+        "checks": [["dotnet", "test"], ["dotnet", "build"]],
+        "engines": ["dotnet test", "Visual Studio debugger", "dotnet-trace", "dotnet-counters"],
+    },
+    {
+        "language": "PHP",
+        "markers": ["composer.json"],
+        "extensions": [".php"],
+        "checks": [["composer", "test"]],
+        "engines": ["Xdebug", "Laravel Debugbar", "Blackfire", "PHPUnit"],
+    },
+    {
+        "language": "Ruby",
+        "markers": ["Gemfile", "Rakefile"],
+        "extensions": [".rb"],
+        "checks": [["bundle", "exec", "rspec"], ["bundle", "exec", "rake", "test"]],
+        "engines": ["rdbg", "byebug", "RSpec", "rack-mini-profiler"],
+    },
+    {
+        "language": "Swift",
+        "markers": ["Package.swift"],
+        "extensions": [".swift"],
+        "checks": [["swift", "test"], ["swift", "build"]],
+        "engines": ["Xcode debugger", "LLDB", "Instruments"],
+    },
+    {
+        "language": "Dart/Flutter",
+        "markers": ["pubspec.yaml"],
+        "extensions": [".dart"],
+        "checks": [["flutter", "test"], ["dart", "test"]],
+        "engines": ["Flutter DevTools", "Dart Observatory", "Android Studio Profiler"],
+    },
+    {
+        "language": "Elixir",
+        "markers": ["mix.exs"],
+        "extensions": [".ex", ".exs"],
+        "checks": [["mix", "test"]],
+        "engines": ["IEx.pry", "Observer", "Telemetry", "ExUnit"],
+    },
+    {
+        "language": "Scala",
+        "markers": ["build.sbt"],
+        "extensions": [".scala", ".sc"],
+        "checks": [["sbt", "test"]],
+        "engines": ["IntelliJ debugger", "JFR", "Async Profiler"],
+    },
+    {
+        "language": "R",
+        "markers": ["DESCRIPTION", "renv.lock"],
+        "extensions": [".r", ".R"],
+        "checks": [["Rscript", "-e", "devtools::test()"]],
+        "engines": ["browser()", "debug()", "profvis", "testthat"],
+    },
+    {
+        "language": "Shell",
+        "markers": [],
+        "extensions": [".sh", ".bash", ".zsh"],
+        "checks": [["shellcheck", "."]],
+        "engines": ["bash -x", "shellcheck", "shfmt", "strace/dtruss"],
+    },
+    {
+        "language": "SQL",
+        "markers": [],
+        "extensions": [".sql"],
+        "checks": [],
+        "engines": ["EXPLAIN ANALYZE", "pg_stat_statements", "query logs"],
+    },
+    {
+        "language": "UI/Web",
+        "markers": ["vite.config.ts", "next.config.js", "astro.config.mjs"],
+        "extensions": [".tsx", ".jsx", ".vue", ".svelte", ".astro", ".css"],
+        "checks": [["npm", "run", "build"]],
+        "engines": ["Playwright trace viewer", "Chrome DevTools", "React/Vue/Svelte DevTools", "Lighthouse"],
+    },
+    {
+        "language": "Mobile",
+        "markers": ["android", "ios", "pubspec.yaml"],
+        "extensions": [".swift", ".kt", ".java", ".dart"],
+        "checks": [],
+        "engines": ["adb logcat", "Android Studio Profiler", "Xcode debugger", "FLEX", "Flipper"],
+    },
+]
+STACK_REFERENCES = {
+    "Rust": ["https://doc.rust-lang.org/book/", "https://doc.rust-lang.org/cargo/", "https://doc.rust-lang.org/clippy/"],
+    "TypeScript": ["https://www.typescriptlang.org/docs/", "https://vitest.dev/guide/", "https://playwright.dev/docs/intro"],
+    "JavaScript": ["https://nodejs.org/en/learn", "https://developer.chrome.com/docs/devtools/", "https://vitest.dev/guide/"],
+    "Go": ["https://go.dev/doc/", "https://pkg.go.dev/github.com/go-delve/delve", "https://pkg.go.dev/net/http/pprof"],
+    "Python": ["https://docs.python.org/3/library/pdb.html", "https://docs.pytest.org/", "https://github.com/microsoft/debugpy"],
+    "Java": ["https://docs.oracle.com/en/java/", "https://docs.oracle.com/javacomponents/jmc-5-5/jfr-runtime-guide/", "https://visualvm.github.io/"],
+    "Kotlin": ["https://kotlinlang.org/docs/home.html", "https://developer.android.com/studio/debug", "https://docs.gradle.org/current/userguide/userguide.html"],
+    "C/C++": ["https://sourceware.org/gdb/current/onlinedocs/gdb.html", "https://lldb.llvm.org/use/map.html", "https://clang.llvm.org/docs/AddressSanitizer.html"],
+    "C#/.NET": ["https://learn.microsoft.com/dotnet/core/tools/dotnet-test", "https://learn.microsoft.com/visualstudio/debugger/", "https://learn.microsoft.com/dotnet/core/diagnostics/"],
+    "PHP": ["https://xdebug.org/docs/", "https://phpunit.de/documentation.html", "https://blackfire.io/docs/"],
+    "Ruby": ["https://github.com/ruby/debug", "https://rspec.info/documentation/", "https://guides.rubyonrails.org/debugging_rails_applications.html"],
+    "Swift": ["https://www.swift.org/documentation/", "https://developer.apple.com/documentation/xcode/debugging", "https://developer.apple.com/tutorials/instruments"],
+    "Dart/Flutter": ["https://docs.flutter.dev/tools/devtools", "https://dart.dev/tools/dart-devtools", "https://docs.flutter.dev/testing"],
+    "Elixir": ["https://hexdocs.pm/iex/IEx.html", "https://hexdocs.pm/ex_unit/ExUnit.html", "https://hexdocs.pm/telemetry/"],
+    "Scala": ["https://docs.scala-lang.org/", "https://www.scala-sbt.org/documentation.html", "https://www.jetbrains.com/help/idea/debugging-scala-code.html"],
+    "R": ["https://adv-r.hadley.nz/debugging.html", "https://testthat.r-lib.org/", "https://rstudio.github.io/profvis/"],
+    "Shell": ["https://www.shellcheck.net/wiki/Home", "https://github.com/mvdan/sh", "https://www.gnu.org/software/bash/manual/"],
+    "SQL": ["https://www.postgresql.org/docs/current/using-explain.html", "https://www.postgresql.org/docs/current/pgstatstatements.html", "https://www.sqlite.org/eqp.html"],
+    "UI/Web": ["https://developer.chrome.com/docs/devtools/", "https://playwright.dev/docs/trace-viewer", "https://web.dev/measure/"],
+    "Mobile": ["https://developer.android.com/studio/debug", "https://developer.apple.com/documentation/xcode/debugging", "https://fbflipper.com/docs/"],
+}
+EXTRA_STACKS = [
+    {"language": "Astro", "markers": ["astro.config.mjs", "astro.config.ts", "astro.config.js"], "extensions": [".astro"], "checks": [["npm", "run", "astro:check"], ["npm", "run", "build"]], "engines": ["astro check", "Vite diagnostics", "Playwright", "Chrome DevTools"], "references": ["https://docs.astro.build/", "https://docs.astro.build/en/reference/cli-reference/", "https://docs.astro.build/en/guides/testing/"]},
+    {"language": "Next.js", "markers": ["next.config.js", "next.config.mjs", "next.config.ts"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["next build", "React DevTools", "Playwright", "Chrome DevTools Performance"], "references": ["https://nextjs.org/docs", "https://nextjs.org/docs/app/building-your-application/optimizing", "https://nextjs.org/docs/app/building-your-application/testing"]},
+    {"language": "React", "markers": ["vite.config.ts", "vite.config.js"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["React DevTools", "Profiler API", "Playwright", "Vitest"], "references": ["https://react.dev/learn", "https://react.dev/reference/react/Profiler", "https://react.dev/learn/react-developer-tools"]},
+    {"language": "Vue", "markers": ["vue.config.js", "nuxt.config.ts", "nuxt.config.js"], "extensions": [".vue"], "checks": [["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["Vue DevTools", "Nuxt DevTools", "Vitest", "Playwright"], "references": ["https://vuejs.org/guide/introduction.html", "https://devtools.vuejs.org/", "https://nuxt.com/docs"]},
+    {"language": "Svelte/SvelteKit", "markers": ["svelte.config.js", "svelte.config.ts"], "extensions": [".svelte"], "checks": [["npm", "run", "check"], ["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["svelte-check", "Svelte DevTools", "Vite diagnostics", "Playwright"], "references": ["https://svelte.dev/docs", "https://kit.svelte.dev/docs", "https://github.com/sveltejs/language-tools/tree/master/packages/svelte-check"]},
+    {"language": "Angular", "markers": ["angular.json"], "extensions": [".ts", ".html"], "checks": [["npm", "run", "test"], ["npm", "run", "build"]], "engines": ["Angular DevTools", "ng test", "Chrome DevTools"], "references": ["https://angular.dev/tools/devtools", "https://angular.dev/guide/testing", "https://angular.dev/reference/configs/workspace-config"]},
+    {"language": "Remix", "markers": ["remix.config.js", "remix.config.mjs"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["Remix dev server", "React DevTools", "Playwright"], "references": ["https://remix.run/docs", "https://remix.run/docs/en/main/guides/testing"]},
+    {"language": "Vite", "markers": ["vite.config.ts", "vite.config.js", "vite.config.mjs"], "extensions": [".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["vite --debug", "Vitest", "Vite inspect", "Chrome DevTools"], "references": ["https://vite.dev/guide/", "https://vite.dev/guide/troubleshooting", "https://vitest.dev/guide/"]},
+    {"language": "Tailwind CSS", "markers": ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.mjs"], "extensions": [".css", ".tsx", ".jsx", ".astro", ".svelte", ".vue"], "checks": [["npm", "run", "build"]], "engines": ["Tailwind content scan", "Chrome CSS inspector", "Vite build"], "references": ["https://tailwindcss.com/docs", "https://tailwindcss.com/docs/detecting-classes-in-source-files"]},
+    {"language": "SolidStart", "markers": ["app.config.ts"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["Solid DevTools", "Vite diagnostics", "Playwright"], "references": ["https://docs.solidjs.com/", "https://docs.solidjs.com/solid-start"]},
+    {"language": "Qwik", "markers": ["qwik.config.ts", "vite.config.ts"], "extensions": [".tsx", ".jsx"], "checks": [["npm", "run", "build"], ["npm", "run", "test"]], "engines": ["Qwik optimizer", "Vite diagnostics", "Playwright"], "references": ["https://qwik.dev/docs/", "https://qwik.dev/docs/testing/"]},
+    {"language": "Zig", "markers": ["build.zig", "build.zig.zon"], "extensions": [".zig"], "checks": [["zig", "build", "test"]], "engines": ["zig test", "LLDB", "sanitizers"], "references": ["https://ziglang.org/documentation/master/", "https://ziglang.org/learn/"]},
+    {"language": "Haskell", "markers": ["stack.yaml", "cabal.project"], "extensions": [".hs", ".lhs"], "checks": [["cabal", "test"], ["stack", "test"]], "engines": ["GHCi", "Haskell Language Server", "eventlog/threadscope"], "references": ["https://www.haskell.org/documentation/", "https://downloads.haskell.org/ghc/latest/docs/users_guide/", "https://haskell-language-server.readthedocs.io/"]},
+    {"language": "OCaml", "markers": ["dune-project"], "extensions": [".ml", ".mli"], "checks": [["dune", "runtest"]], "engines": ["dune runtest", "OCaml debugger", "Merlin"], "references": ["https://ocaml.org/docs", "https://dune.readthedocs.io/", "https://github.com/ocaml/merlin"]},
+    {"language": "Clojure", "markers": ["deps.edn", "project.clj"], "extensions": [".clj", ".cljs", ".cljc"], "checks": [["clojure", "-M:test"], ["lein", "test"]], "engines": ["REPL", "Portal", "clj-kondo", "test.check"], "references": ["https://clojure.org/guides/getting_started", "https://cljdoc.org/d/clj-kondo/clj-kondo", "https://github.com/cognitect-labs/test.check"]},
+    {"language": "Erlang", "markers": ["rebar.config"], "extensions": [".erl", ".hrl"], "checks": [["rebar3", "eunit"], ["rebar3", "ct"]], "engines": ["Observer", "recon", "Common Test", "EUnit"], "references": ["https://www.erlang.org/doc/", "https://www.rebar3.org/docs/", "https://ferd.github.io/recon/"]},
+    {"language": "Lua", "markers": [".luacheckrc", "stylua.toml"], "extensions": [".lua"], "checks": [["busted"]], "engines": ["MobDebug", "busted", "LuaRocks test"], "references": ["https://www.lua.org/manual/5.4/", "https://lunarmodules.github.io/busted/", "https://github.com/mpeterv/luacheck"]},
+    {"language": "Perl", "markers": ["cpanfile", "Makefile.PL", "Build.PL"], "extensions": [".pl", ".pm", ".t"], "checks": [["prove", "-lr", "t"]], "engines": ["perl -d", "Devel::NYTProf", "prove"], "references": ["https://perldoc.perl.org/perldebug", "https://metacpan.org/pod/Devel::NYTProf", "https://perldoc.perl.org/prove"]},
+    {"language": "Julia", "markers": ["Project.toml", "Manifest.toml"], "extensions": [".jl"], "checks": [["julia", "--project=.", "-e", "using Pkg; Pkg.test()"]], "engines": ["Debugger.jl", "Profile", "Test"], "references": ["https://docs.julialang.org/", "https://github.com/JuliaDebug/Debugger.jl", "https://docs.julialang.org/en/v1/stdlib/Profile/"]},
+    {"language": "Nim", "markers": ["nim.cfg"], "extensions": [".nim", ".nims", ".nimble"], "checks": [["nimble", "test"]], "engines": ["nim c --debugger:native", "GDB/LLDB", "testament"], "references": ["https://nim-lang.org/documentation.html", "https://nim-lang.org/docs/nimc.html", "https://nim-lang.github.io/Nim/testament.html"]},
+    {"language": "Crystal", "markers": ["shard.yml"], "extensions": [".cr"], "checks": [["crystal", "spec"]], "engines": ["crystal spec", "LLDB", "crystal tool format"], "references": ["https://crystal-lang.org/reference/", "https://crystal-lang.org/reference/latest/guides/debugging.html"]},
+    {"language": "D", "markers": ["dub.json", "dub.sdl"], "extensions": [".d"], "checks": [["dub", "test"]], "engines": ["dub test", "GDB/LLDB", "DTrace/perf"], "references": ["https://dlang.org/spec/spec.html", "https://dub.pm/commandline", "https://wiki.dlang.org/Debuggers"]},
+    {"language": "Objective-C", "markers": ["Podfile"], "extensions": [".m", ".mm"], "checks": [["xcodebuild", "test"]], "engines": ["Xcode debugger", "LLDB", "Instruments"], "references": ["https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ProgrammingWithObjectiveC/", "https://developer.apple.com/documentation/xcode/debugging", "https://lldb.llvm.org/"]},
+    {"language": "Groovy/Gradle", "markers": ["build.gradle", "settings.gradle"], "extensions": [".groovy"], "checks": [["gradle", "test"]], "engines": ["Gradle build scans", "Spock", "JFR"], "references": ["https://docs.gradle.org/current/userguide/troubleshooting.html", "https://spockframework.org/spock/docs/", "https://groovy-lang.org/documentation.html"]},
+    {"language": "Fortran", "markers": ["fpm.toml"], "extensions": [".f90", ".f95", ".f03", ".f08", ".for"], "checks": [["fpm", "test"]], "engines": ["GDB", "Valgrind", "compiler bounds checks"], "references": ["https://fortran-lang.org/learn/", "https://fpm.fortran-lang.org/", "https://gcc.gnu.org/onlinedocs/gfortran/Debugging-Options.html"]},
+    {"language": "Pascal/Delphi", "markers": [], "extensions": [".pas", ".dpr"], "checks": [], "engines": ["Lazarus debugger", "Delphi debugger", "GDB"], "references": ["https://www.freepascal.org/docs.html", "https://wiki.freepascal.org/Debugger", "https://docwiki.embarcadero.com/RADStudio/en/Debugging_Applications"]},
+    {"language": "COBOL", "markers": [], "extensions": [".cob", ".cbl", ".cpy"], "checks": [], "engines": ["GnuCOBOL compiler diagnostics", "GDB", "unit test harnesses"], "references": ["https://gnucobol.sourceforge.io/doc/gnucobol.html", "https://www.ibm.com/docs/en/cobol-zos"]},
+    {"language": "PowerShell", "markers": ["PSScriptAnalyzerSettings.psd1"], "extensions": [".ps1", ".psm1", ".psd1"], "checks": [["pwsh", "-NoProfile", "-Command", "Invoke-ScriptAnalyzer -Path . -Recurse"]], "engines": ["PowerShell debugger", "PSScriptAnalyzer", "Pester"], "references": ["https://learn.microsoft.com/powershell/scripting/learn/deep-dives/everything-about-debugging", "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/overview", "https://pester.dev/docs/quick-start"]},
+    {"language": "Terraform/HCL", "markers": [".terraform.lock.hcl"], "extensions": [".tf", ".tfvars", ".hcl"], "checks": [["terraform", "validate"], ["tflint"]], "engines": ["terraform validate", "terraform plan", "tflint", "tfsec/checkov"], "references": ["https://developer.hashicorp.com/terraform/cli/commands/validate", "https://developer.hashicorp.com/terraform/cli/commands/plan", "https://github.com/terraform-linters/tflint"]},
+    {"language": "Nix", "markers": ["flake.nix", "default.nix", "shell.nix"], "extensions": [".nix"], "checks": [["nix", "flake", "check"]], "engines": ["nix flake check", "nix repl", "nix log"], "references": ["https://nixos.org/manual/nix/stable/", "https://nixos.wiki/wiki/Flakes", "https://nix.dev/manual/nix/2.24/command-ref/new-cli/nix3-log"]},
+    {"language": "Docker", "markers": ["Dockerfile", "docker-compose.yml", "compose.yaml"], "extensions": [".dockerfile"], "checks": [["hadolint", "Dockerfile"], ["docker", "compose", "config"]], "engines": ["hadolint", "docker build --progress=plain", "docker compose logs"], "references": ["https://docs.docker.com/build/building/best-practices/", "https://docs.docker.com/reference/cli/docker/compose/config/", "https://github.com/hadolint/hadolint"]},
+    {"language": "Kubernetes/Helm", "markers": ["Chart.yaml", "kustomization.yaml"], "extensions": [".yaml", ".yml"], "checks": [["helm", "lint"], ["kubeconform", "-summary", "."]], "engines": ["kubectl describe/logs/events", "helm lint", "kubeconform", "stern"], "references": ["https://kubernetes.io/docs/tasks/debug/", "https://helm.sh/docs/helm/helm_lint/", "https://github.com/yannh/kubeconform"]},
+    {"language": "YAML/CI", "markers": [".github", ".gitlab-ci.yml"], "extensions": [".yaml", ".yml"], "checks": [["yamllint", "."]], "engines": ["yamllint", "actionlint", "CI logs"], "references": ["https://yamllint.readthedocs.io/", "https://github.com/rhysd/actionlint", "https://docs.github.com/actions/monitoring-and-troubleshooting-workflows"]},
+    {"language": "GraphQL", "markers": ["graphql.config.yml", "graphql.config.js"], "extensions": [".graphql", ".gql"], "checks": [["graphql-schema-linter", "."]], "engines": ["GraphiQL", "Apollo trace", "schema lint"], "references": ["https://graphql.org/learn/", "https://www.apollographql.com/docs/", "https://github.com/cjoudrey/graphql-schema-linter"]},
+    {"language": "Protocol Buffers/gRPC", "markers": ["buf.yaml", "buf.gen.yaml"], "extensions": [".proto"], "checks": [["buf", "lint"], ["buf", "breaking", "--against", ".git#branch=main"]], "engines": ["buf lint", "grpcurl", "wire logs"], "references": ["https://protobuf.dev/", "https://buf.build/docs/", "https://github.com/fullstorydev/grpcurl"]},
+    {"language": "Solidity", "markers": ["foundry.toml", "hardhat.config.ts", "hardhat.config.js"], "extensions": [".sol"], "checks": [["forge", "test"], ["npx", "hardhat", "test"]], "engines": ["forge test/trace", "Hardhat console", "Slither"], "references": ["https://book.getfoundry.sh/", "https://hardhat.org/docs", "https://github.com/crytic/slither"]},
+    {"language": "Move", "markers": ["Move.toml"], "extensions": [".move"], "checks": [["sui", "move", "test"], ["aptos", "move", "test"]], "engines": ["Move unit tests", "Sui/Aptos CLI trace", "formal specs"], "references": ["https://move-language.github.io/move/", "https://docs.sui.io/concepts/sui-move-concepts", "https://aptos.dev/en/build/smart-contracts"]},
+    {"language": "Elm", "markers": ["elm.json"], "extensions": [".elm"], "checks": [["elm", "make", "src/Main.elm"]], "engines": ["elm make", "elm-test", "Elm debugger"], "references": ["https://guide.elm-lang.org/", "https://package.elm-lang.org/packages/elm-explorations/test/latest/", "https://guide.elm-lang.org/effects/time.html"]},
+    {"language": "ReScript", "markers": ["rescript.json", "bsconfig.json"], "extensions": [".res", ".resi"], "checks": [["rescript", "build", "-with-deps"]], "engines": ["rescript build", "JS source maps", "React DevTools"], "references": ["https://rescript-lang.org/docs/manual/latest/introduction", "https://rescript-lang.org/docs/react/latest/introduction"]},
+    {"language": "Haxe", "markers": ["build.hxml"], "extensions": [".hx", ".hxml"], "checks": [["haxe", "build.hxml"]], "engines": ["Haxe compiler diagnostics", "target debugger", "unit tests"], "references": ["https://haxe.org/documentation/", "https://haxe.org/manual/cr-debugging.html"]},
+    {"language": "Godot/GDScript", "markers": ["project.godot"], "extensions": [".gd", ".tscn", ".tres"], "checks": [["godot", "--headless", "--check-only"]], "engines": ["Godot debugger", "profiler", "remote scene tree"], "references": ["https://docs.godotengine.org/en/stable/tutorials/scripting/debug/index.html", "https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/"]},
+    {"language": "Unity", "markers": ["ProjectSettings", "Assets"], "extensions": [".cs", ".shader", ".asmdef"], "checks": [], "engines": ["Unity Console", "Profiler", "Frame Debugger", "Rider/VS debugger"], "references": ["https://docs.unity3d.com/Manual/ManagedCodeDebugging.html", "https://docs.unity3d.com/Manual/Profiler.html", "https://docs.unity3d.com/Manual/FrameDebugger.html"]},
+    {"language": "Unreal Engine", "markers": [], "extensions": [".uproject", ".uplugin"], "checks": [], "engines": ["Unreal Insights", "Visual Studio/Rider debugger", "stat commands"], "references": ["https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine", "https://dev.epicgames.com/documentation/en-us/unreal-engine/debugging-in-unreal-engine"]},
+    {"language": "WebAssembly", "markers": ["wasm-pack.toml"], "extensions": [".wat", ".wasm"], "checks": [["wasm-pack", "test", "--node"]], "engines": ["wasm-pack test", "Chrome Wasm debugger", "wasmtime"], "references": ["https://webassembly.org/getting-started/developers-guide/", "https://rustwasm.github.io/wasm-pack/book/", "https://developer.chrome.com/docs/devtools/wasm/"]},
+]
+for _item in LANGUAGE_MATRIX:
+    _item.setdefault("references", STACK_REFERENCES.get(_item["language"], []))
+LANGUAGE_MATRIX.extend(EXTRA_STACKS)
+
+TOP_FLOWS = [
+    {"name": "one_command_repo_truth", "trigger": "new repo, dirty repo, unknown health", "steps": ["identify git/remotes/branch", "map packages/extensions/stacks", "rank dirty impact", "run safe checks", "emit markdown/json/AI brief"], "output": "PASS/WARN/FAIL plus next 5 fixes"},
+    {"name": "dirty_impact_debug", "trigger": "many local changes or broken branch", "steps": ["ignore generated artifacts", "score changed files by graph/risk/fan-in", "group by stack/package", "inspect top 5 first"], "output": "smallest files that can explain the largest failure surface"},
+    {"name": "stack_specific_verification", "trigger": "repo has known language/framework markers", "steps": ["detect matrix entries", "load matching check commands", "filter unavailable tools and missing npm scripts", "run bounded checks"], "output": "real commands with stdout/stderr tails"},
+    {"name": "security_dependency_triage", "trigger": "release, dependency change, suspicious repo", "steps": ["run grepgod security when present", "combine semgrep/gitleaks/osv class findings", "prioritize reachable/package-level issues"], "output": "security/dependency queue before feature work"},
+    {"name": "frontend_ui_regression", "trigger": "Astro/Next/React/Vue/Svelte/UI bug", "steps": ["build/typecheck first", "open with Playwright/DevTools", "capture trace/screenshot if needed", "map component files to dirty impact"], "output": "visual/runtime evidence tied to source files"},
+    {"name": "native_runtime_crash", "trigger": "Rust/C/C++/Swift/Zig/native crash or hang", "steps": ["build with debug symbols", "use LLDB/GDB/core dump", "enable sanitizers or miri where relevant", "profile hot path"], "output": "crash frame, UB/memory/race hypothesis, verifying command"},
+    {"name": "backend_request_trace", "trigger": "API/service request fails or is slow", "steps": ["find endpoint/package", "reproduce with curl/hurl", "inspect logs/traces", "profile database/query plan"], "output": "request path with failing boundary"},
+    {"name": "monorepo_boundary_map", "trigger": "workspace/package coupling or broken shared code", "steps": ["count package markers", "map imports/call edges if grepgod exists", "link checks to packages", "rank shared modules"], "output": "which package to fix first and what depends on it"},
+    {"name": "ai_handoff_compression", "trigger": "Codex/Claude needs context fast", "steps": ["write JSON source of truth", "write markdown report", "write compact AI brief", "include next commands and anti-revert rule"], "output": "agent-ready context in under one screen"},
+    {"name": "fallback_no_grepgod", "trigger": "fresh machine, CI, Linux server without grepgod", "steps": ["use Python stdlib scanner", "detect stacks by markers/extensions", "run only installed safe checks", "skip unavailable engines cleanly"], "output": "portable report without hard dependency"},
+]
+
+
+def run(
+    cmd: list[str],
+    cwd: Path | None = None,
+    check: bool = False,
+    timeout: int | None = None,
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=check,
+        timeout=timeout,
+    )
+
+
+def load_json(path: Path, default):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return default
+
+
+def repo_identity(repo: Path) -> dict:
+    remotes = []
+    if (repo / ".git").exists():
+        cp = run(["git", "-C", str(repo), "remote", "-v"])
+        for line in cp.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] == "(fetch)":
+                remotes.append({"name": parts[0], "url": parts[1]})
+    branch = run(["git", "-C", str(repo), "branch", "--show-current"]) if (repo / ".git").exists() else None
+    head = run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"]) if (repo / ".git").exists() else None
+    return {
+        "name": repo.name,
+        "path": str(repo),
+        "branch": branch.stdout.strip() if branch and branch.returncode == 0 else "",
+        "head": head.stdout.strip() if head and head.returncode == 0 else "",
+        "remotes": remotes,
+    }
+
+
+def git_changed(repo: Path) -> list[dict[str, str]]:
+    if not (repo / ".git").exists():
+        return []
+    cp = run(["git", "-C", str(repo), "status", "--porcelain=v1", "-uall"])
+    rows = []
+    for line in cp.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path.startswith((".grepgod/", ".codegraph/", ".debugmaster/", ".repovista/")):
+            continue
+        rows.append({"status": line[:2].strip() or "M", "path": path})
+    return rows
+
+
+def package_count(repo: Path) -> int:
+    markers = {"package.json", "Cargo.toml", "pyproject.toml", "go.mod", "deno.json", "deno.jsonc"}
+    count = 0
+    for dp, dirs, files in os.walk(repo):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and d not in GENERATED_DIRS]
+        if markers.intersection(files):
+            count += 1
+    return count
+
+
+def structure(repo: Path) -> dict:
+    markers = {"package.json", "Cargo.toml", "pyproject.toml", "go.mod", "deno.json", "deno.jsonc"}
+    packages = []
+    by_ext: dict[str, int] = {}
+    marker_names: set[str] = set()
+    files = 0
+    dirs = 0
+    truncated = False
+    for dp, dirnames, filenames in os.walk(repo, onerror=lambda _err: None):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and d not in GENERATED_DIRS]
+        marker_names.update(dirnames)
+        marker_names.update(filenames)
+        dirs += len(dirnames)
+        rel_dir = os.path.relpath(dp, repo)
+        found = sorted(set(filenames) & markers)
+        if found:
+            packages.append({"path": "." if rel_dir == "." else rel_dir, "markers": found})
+        for name in filenames:
+            files += 1
+            if files >= MAX_SCAN_FILES:
+                truncated = True
+                dirnames[:] = []
+                break
+            ext = Path(name).suffix.lower() or "[none]"
+            by_ext[ext] = by_ext.get(ext, 0) + 1
+        if truncated:
+            break
+    return {
+        "files": files,
+        "dirs": dirs,
+        "packages": packages[:200],
+        "package_count": len(packages),
+        "top_extensions": sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)[:25],
+        "extensions": by_ext,
+        "marker_names": sorted(marker_names),
+        "truncated": truncated,
+        "max_scan_files": MAX_SCAN_FILES,
+    }
+
+
+def fallback_health(repo: Path) -> dict:
+    changed = git_changed(repo)
+    return {
+        "status": "DIRTY" if changed else "FRESH",
+        "engine": "debugmaster-fallback",
+        "repo": str(repo),
+        "dirty": bool(changed),
+        "changed_files": len(changed),
+        "impact": len(changed) * 4,
+        "packages": package_count(repo),
+        "top_changed": changed[:20],
+    }
+
+
+def grepgod_health(repo: Path) -> dict | None:
+    if os.environ.get("DEBUGMASTER_NO_GREPGOD") == "1" or not shutil.which("grepgod"):
+        return None
+    cp = run(["grepgod", "healthmap", str(repo)])
+    hp = repo / ".grepgod" / "healthmap.json"
+    if cp.returncode != 0 or not hp.exists():
+        return None
+    data = load_json(hp, {})
+    return {
+        "status": data.get("status", "UNKNOWN"),
+        "engine": "grepgod",
+        "repo": str(repo),
+        "dirty": bool(data.get("git", {}).get("dirty")),
+        "changed_files": len(data.get("git", {}).get("changed_files", [])),
+        "impact": data.get("impact", {}).get("score", 0),
+        "packages": data.get("monorepo", {}).get("package_count", 0),
+        "top_changed": data.get("impact", {}).get("changed_files", [])[:20],
+    }
+
+
+def health(repo: Path) -> dict:
+    return grepgod_health(repo) or fallback_health(repo)
+
+
+def load_grepgod_index(repo: Path) -> dict:
+    idx = repo / ".grepgod" / "map-index.json"
+    return load_json(idx, {}) if idx.exists() else {}
+
+
+def command_available(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+def package_scripts(repo: Path) -> dict:
+    data = load_json(repo / "package.json", {}) if (repo / "package.json").exists() else {}
+    scripts = data.get("scripts", {}) if isinstance(data, dict) else {}
+    return scripts if isinstance(scripts, dict) else {}
+
+
+def command_supported(repo: Path, cmd: list[str]) -> bool:
+    if not cmd or not command_available(cmd[0]):
+        return False
+    scripts = package_scripts(repo)
+    if cmd[0] in {"npm", "pnpm"} and len(cmd) >= 3 and cmd[1] == "run":
+        return cmd[2] in scripts
+    if cmd[0] == "yarn" and len(cmd) >= 2:
+        return cmd[1] in scripts
+    if cmd[0] == "npx":
+        return (repo / "package.json").exists()
+    return True
+
+
+def detected_languages(repo: Path, s: dict | None = None) -> list[dict]:
+    s = s or structure(repo)
+    markers = {m for pkg in s["packages"] for m in pkg.get("markers", [])}
+    markers.update(s.get("marker_names", []))
+    ext_counts = s.get("extensions", {})
+    found = []
+    for item in LANGUAGE_MATRIX:
+        marker_hits = sorted(set(item["markers"]) & markers)
+        ext_hits = {ext: ext_counts.get(ext, 0) for ext in item["extensions"] if ext_counts.get(ext, 0)}
+        if marker_hits or ext_hits:
+            found.append(
+                {
+                    "language": item["language"],
+                    "markers": marker_hits,
+                    "extensions": ext_hits,
+                    "files": sum(ext_hits.values()),
+                    "engines": item["engines"],
+                    "checks": item["checks"],
+                    "references": item.get("references", []),
+                }
+            )
+    found.sort(key=lambda r: (-r["files"], r["language"]))
+    return found
+
+
+def stack_engines(repo: Path, languages: list[dict] | None = None) -> list[dict]:
+    engines = []
+    for lang in (languages or detected_languages(repo)):
+        for engine in lang["engines"]:
+            engines.append({"stack": lang["language"], "engine": engine, "why": "detected stack engine"})
+    engines += [
+        {"stack": "Generic", "engine": "grepgod/debugmaster healthmap", "why": "dirty impact ranking"},
+        {"stack": "Generic", "engine": "semgrep/gitleaks/osv-scanner", "why": "security and dependency scan"},
+        {"stack": "Generic", "engine": "OpenTelemetry/log correlation", "why": "distributed runtime debugging"},
+    ]
+    return engines
+
+
+def detect_checks(repo: Path, profile: str = "safe", languages: list[dict] | None = None) -> list[list[str]]:
+    checks: list[list[str]] = [["git", "diff", "--check"]] if (repo / ".git").exists() else []
+    justfile = repo / "justfile"
+    if justfile.exists() and command_available("just"):
+        text = justfile.read_text(errors="ignore")
+        if any(line.startswith("check:") for line in text.splitlines()):
+            checks.append(["just", "check"])
+            return checks
+    if (repo / "Cargo.toml").exists() and command_available("cargo"):
+        checks.append(["cargo", "check", "--workspace", "--all-targets"])
+    if (repo / "package.json").exists():
+        scripts = package_scripts(repo)
+        manager = "npm"
+        if (repo / "yarn.lock").exists() and command_available("yarn"):
+            manager = "yarn"
+        elif (repo / "pnpm-lock.yaml").exists() and command_available("pnpm"):
+            manager = "pnpm"
+        elif not command_available("npm"):
+            manager = ""
+        for script in ("check", "test", "build"):
+            if manager and script in scripts:
+                checks.append([manager, "run", script] if manager != "yarn" else ["yarn", script])
+                break
+    if profile == "deep" and ((repo / "pyproject.toml").exists() or (repo / "tests").exists()) and command_available("pytest"):
+        checks.append(["pytest", "-q"])
+    shell_files = [
+        str(p.relative_to(repo))
+        for p in repo.rglob("*.sh")
+        if not any(
+            part in GENERATED_DIRS
+            or part in SKIP_DIRS
+            for part in p.relative_to(repo).parts
+        )
+    ][:MAX_SHELLCHECK_FILES]
+    if profile == "safe":
+        return checks[:4]
+    heavy_tokens = {"test", "-race", "cmake", "make", "pytest", "flutter", "xcodebuild", "forge", "hardhat"}
+    for lang in (languages or detected_languages(repo)):
+        for cmd in lang.get("checks", []):
+            if len(checks) >= 8:
+                break
+            if cmd in checks or not cmd:
+                continue
+            if profile == "standard" and any(part in heavy_tokens for part in cmd):
+                continue
+            exe = cmd[0]
+            if exe == "shellcheck":
+                if not shell_files or not command_available("shellcheck"):
+                    continue
+                cmd = ["shellcheck", *shell_files]
+            elif not command_supported(repo, cmd):
+                continue
+            checks.append(cmd)
+    return checks[:5]
+
+
+def run_checks(repo: Path, timeout: int, profile: str = "safe", languages: list[dict] | None = None) -> list[dict]:
+    results = []
+    for cmd in detect_checks(repo, profile=profile, languages=languages):
+        started = time.time()
+        try:
+            cp = run(cmd, cwd=repo, timeout=timeout)
+            results.append(
+                {
+                    "cmd": cmd,
+                    "ok": cp.returncode == 0,
+                    "returncode": cp.returncode,
+                    "seconds": round(time.time() - started, 2),
+                    "stdout_tail": cp.stdout[-4000:],
+                    "stderr_tail": cp.stderr[-4000:],
+                    "severity": "pass" if cp.returncode == 0 else "fail",
+                }
+            )
+        except subprocess.TimeoutExpired as e:
+            results.append(
+                {
+                    "cmd": cmd,
+                    "ok": False,
+                    "returncode": "timeout",
+                    "seconds": timeout,
+                    "stdout_tail": (e.stdout or "")[-4000:] if isinstance(e.stdout, str) else "",
+                    "stderr_tail": (e.stderr or "")[-4000:] if isinstance(e.stderr, str) else "",
+                    "severity": "warn",
+                }
+            )
+        except (FileNotFoundError, PermissionError, OSError) as e:
+            results.append(
+                {
+                    "cmd": cmd,
+                    "ok": False,
+                    "returncode": "unavailable",
+                    "seconds": round(time.time() - started, 2),
+                    "stdout_tail": "",
+                    "stderr_tail": str(e)[-4000:],
+                    "severity": "warn",
+                }
+            )
+    return results
+
+
+def run_security(repo: Path, timeout: int) -> dict:
+    if os.environ.get("DEBUGMASTER_NO_GREPGOD") == "1" or not command_available("grepgod"):
+        return {"engine": "none", "ok": None, "summary": "grepgod unavailable; security scan skipped", "stdout_tail": "", "stderr_tail": ""}
+    try:
+        cp = run(["grepgod", "--chain", "security"], cwd=repo, timeout=timeout)
+        text = (cp.stdout + "\n" + cp.stderr)[-12000:]
+        return {
+            "engine": "grepgod --chain security",
+            "ok": cp.returncode == 0,
+            "returncode": cp.returncode,
+            "summary": "completed" if cp.returncode == 0 else "findings or scan failure",
+            "stdout_tail": cp.stdout[-6000:],
+            "stderr_tail": cp.stderr[-6000:],
+            "combined_tail": text,
+        }
+    except subprocess.TimeoutExpired:
+        return {"engine": "grepgod --chain security", "ok": False, "returncode": "timeout", "summary": "security scan timed out", "stdout_tail": "", "stderr_tail": ""}
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        return {"engine": "grepgod --chain security", "ok": None, "returncode": "unavailable", "summary": f"security scan unavailable: {e}", "stdout_tail": "", "stderr_tail": str(e)}
+
+
+def verdict(report: dict) -> str:
+    checks = report.get("checks", [])
+    if any(not c.get("ok") and c.get("severity") != "warn" for c in checks):
+        return "FAIL"
+    sec = report.get("security", {})
+    if sec.get("ok") is False:
+        return "FAIL"
+    health_data = report.get("health", {})
+    risk_total = report.get("grepgod_index", {}).get("riskmap", {}).get("total", 0)
+    if health_data.get("status") == "ATTENTION" or risk_total:
+        return "WARN"
+    if any(not c.get("ok") for c in checks):
+        return "WARN"
+    if health_data.get("dirty"):
+        return "WARN"
+    return "PASS"
+
+
+def next_fixes(report: dict) -> list[dict]:
+    fixes = []
+    for c in report.get("checks", []):
+        if not c.get("ok"):
+            warn = c.get("severity") == "warn"
+            fixes.append({
+                "priority": len(fixes) + 1,
+                "title": "Investigate warning check" if warn else "Fix failing check",
+                "target": " ".join(c.get("cmd", [])),
+                "reason": f"returncode={c.get('returncode')}",
+            })
+    sec = report.get("security", {})
+    if sec.get("ok") is False:
+        fixes.append({
+            "priority": len(fixes) + 1,
+            "title": "Review security/dependency scan",
+            "target": sec.get("engine", "security"),
+            "reason": sec.get("summary", "security finding"),
+        })
+    for row in report.get("health", {}).get("top_changed", []):
+        if len(fixes) >= 5:
+            break
+        fixes.append({
+            "priority": len(fixes) + 1,
+            "title": "Inspect high-impact dirty file",
+            "target": row.get("path"),
+            "reason": f"score={row.get('score', 0)} risks={row.get('nearby_risks', 0)} fanin={row.get('max_fanin', 0)}",
+        })
+    return fixes[:5]
+
+
+def markdown_report(report: dict) -> str:
+    h = report["health"]
+    s = report["structure"]
+    gi = report.get("grepgod_index", {})
+    lines = [
+        "# Debugmaster All-In-One Report",
+        "",
+        f"Repo: `{report['repo']}`",
+        f"Branch: `{report.get('identity', {}).get('branch', '')}` · HEAD: `{report.get('identity', {}).get('head', '')}`",
+        f"Verdict: **{report['verdict']}**",
+        f"Engine: `{h.get('engine')}`",
+        f"Check profile: `{report.get('check_profile', 'safe')}`",
+        "",
+        "## Health",
+        "",
+        f"- Status: **{h.get('status')}**",
+        f"- Dirty files: **{h.get('changed_files')}**",
+        f"- Impact: **{h.get('impact')}**",
+        f"- Packages: **{h.get('packages')}**",
+        "",
+        "## Structure",
+        "",
+        f"- Files: **{s['files']}**",
+        f"- Dirs: **{s['dirs']}**",
+        f"- Package markers: **{s['package_count']}**",
+        f"- Truncated: **{str(s.get('truncated', False)).lower()}** (limit: {s.get('max_scan_files', MAX_SCAN_FILES)})",
+        "",
+        "| ext | files |",
+        "|---|---:|",
+    ]
+    for ext, count in s["top_extensions"][:12]:
+        lines.append(f"| `{ext}` | {count} |")
+    lines += ["", "## Detected Languages / Stacks", ""]
+    for lang in report.get("languages", [])[:20]:
+        ext_text = ", ".join(f"{k}:{v}" for k, v in lang.get("extensions", {}).items()) or "-"
+        lines.append(f"- **{lang['language']}** files={lang['files']} markers={','.join(lang['markers']) or '-'} extensions={ext_text}")
+    lines += ["", "## Stack References", ""]
+    for lang in report.get("languages", [])[:20]:
+        refs = lang.get("references", [])[:3]
+        if refs:
+            lines.append(f"- **{lang['language']}**: " + " · ".join(refs))
+    lines += ["", "## Debug Flows", ""]
+    for flow in report.get("flows", TOP_FLOWS)[:10]:
+        lines.append(f"- **{flow['name']}** — trigger: {flow['trigger']} → output: {flow['output']}")
+    if gi:
+        lines += [
+            "",
+            "## Grepgod Map",
+            "",
+            f"- Functions: **{gi.get('funcmap', {}).get('functions', 0)}**",
+            f"- Call edges: **{gi.get('funcmap', {}).get('edges', 0)}**",
+            f"- Endpoints: **{gi.get('apimap', {}).get('endpoints', 0)}**",
+            f"- Tables: **{gi.get('dbmap', {}).get('tables', 0)}**",
+            f"- Risks: **{gi.get('riskmap', {}).get('total', 0)}**",
+        ]
+    lines += ["", "## Security / Dependency", ""]
+    sec = report.get("security", {})
+    if sec:
+        mark = "PASS" if sec.get("ok") else ("SKIP" if sec.get("ok") is None else "FAIL")
+        lines.append(f"- **{mark}** `{sec.get('engine')}` — {sec.get('summary')}")
+    else:
+        lines.append("_No security scan run._")
+    gh = report.get("ghmax", {})
+    lines += ["", "## Ghmax Intelligence", ""]
+    if gh and gh.get("ok") is not None:
+        mark = "PASS" if gh.get("ok") else "FAIL"
+        lines.append(f"- **{mark}** {gh.get('summary')}")
+        for file in gh.get("files", [])[:4]:
+            lines.append(f"- `{file}`")
+    else:
+        lines.append("_Not requested._")
+    lines += ["", "## Available Debug Engines", ""]
+    for e in report.get("recommended_engines", [])[:14]:
+        lines.append(f"- `{e['engine']}` ({e['stack']}) — {e['why']}")
+    lines += ["", "## Checks", ""]
+    for c in report.get("checks", []):
+        mark = "PASS" if c["ok"] else ("WARN" if c.get("severity") == "warn" else "FAIL")
+        lines.append(f"- **{mark}** `{ ' '.join(c['cmd']) }` ({c['seconds']}s)")
+    if not report.get("checks"):
+        lines.append("_No checks run._")
+    lines += ["", "## Next 5 Fixes", ""]
+    for fix in report.get("next_fixes", []):
+        lines.append(f"{fix['priority']}. **{fix['title']}** — `{fix['target']}` ({fix['reason']})")
+    lines += ["", "## Highest Impact Dirty Files", ""]
+    for row in h.get("top_changed", [])[:20]:
+        lines.append(
+            f"- `{row.get('path')}` score={row.get('score', 0)} "
+            f"risks={row.get('nearby_risks', 0)} fanin={row.get('max_fanin', 0)}"
+        )
+    lines += [
+        "",
+        "## AI Handoff",
+        "",
+        "Read this report first, then inspect `.grepgod/MAP.md` if it exists. "
+        "Start with failing checks, then high-impact dirty files, then high-risk map findings.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def ai_brief(report: dict) -> str:
+    h = report["health"]
+    gi = report.get("grepgod_index", {})
+    checks = report.get("checks", [])
+    failing = [c for c in checks if not c.get("ok") and c.get("severity") != "warn"]
+    warnings = [c for c in checks if not c.get("ok") and c.get("severity") == "warn"]
+    top = h.get("top_changed", [])[:8]
+    return "\n".join(
+        [
+            "# Debugmaster AI Brief",
+            "",
+            f"Verdict: {report['verdict']}",
+            f"Repo: {report['repo']}",
+            f"Identity: branch={report.get('identity', {}).get('branch', '')} head={report.get('identity', {}).get('head', '')}",
+            f"Health: {h.get('status')} via {h.get('engine')} · dirty={h.get('changed_files')} · impact={h.get('impact')}",
+            f"Structure: packages={report['structure']['package_count']} · files={report['structure']['files']}",
+            "Languages: " + ", ".join(lang["language"] for lang in report.get("languages", [])[:8]),
+            f"Map: funcs={gi.get('funcmap', {}).get('functions', 0)} edges={gi.get('funcmap', {}).get('edges', 0)} risks={gi.get('riskmap', {}).get('total', 0)}",
+            f"Checks: {len([c for c in checks if c.get('ok')])}/{len(checks)} passed · fail={len(failing)} · warn={len(warnings)} · profile={report.get('check_profile', 'safe')}",
+            f"Security: {report.get('security', {}).get('summary', 'not run')}",
+            "Top flows: " + ", ".join(f["name"] for f in report.get("flows", TOP_FLOWS)[:5]),
+            "",
+            "Next 5 fixes:",
+            *[
+                f"- {f['title']}: {f['target']} ({f['reason']})"
+                for f in report.get("next_fixes", [])
+            ],
+            "",
+            "Next focus files:",
+            *[
+                f"- {r.get('path')} score={r.get('score', 0)} risks={r.get('nearby_risks', 0)}"
+                for r in top
+            ],
+            "",
+            "Instruction: fix failing checks first, then highest impact dirty files. Do not revert unrelated user changes.",
+            "",
+        ]
+    )
+
+
+def run_ghmax(repo: Path, out_dir: Path, query: str = "", limit: int = 8) -> dict:
+    if not command_available("ghmax"):
+        return {"ok": None, "summary": "ghmax unavailable", "files": []}
+    langs = [lang["language"] for lang in detected_languages(repo)[:4]]
+    query = query or f"{repo.name} {' '.join(langs)} debugging codegraph healthmap"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    repos_json = out_dir / "debugmaster-ghmax-repos.json"
+    patterns_md = out_dir / "debugmaster-ghmax-patterns.md"
+    result = {"ok": True, "query": query, "files": [], "commands": []}
+    commands = [
+        ["ghmax", "--repos", query, "--stars-min", "100", "-n", str(limit), "--sort", "stars", "--format", "json"],
+        ["ghmax", query, "--peek", "-n", str(limit), "--export", str(patterns_md)],
+    ]
+    returncodes = []
+    for cmd, artifact in ((commands[0], repos_json), (commands[1], patterns_md)):
+        try:
+            cp = run(cmd, cwd=repo, timeout=90)
+            returncodes.append(cp.returncode)
+            result["commands"].append({"cmd": cmd, "returncode": cp.returncode, "stderr_tail": cp.stderr[-2000:]})
+            if artifact == repos_json:
+                repos_json.write_text(cp.stdout or "[]\n")
+            if artifact.exists():
+                result["files"].append(str(artifact))
+        except subprocess.TimeoutExpired:
+            returncodes.append("timeout")
+            result["commands"].append({"cmd": cmd, "returncode": "timeout", "stderr_tail": "ghmax timed out"})
+        except (FileNotFoundError, PermissionError, OSError) as e:
+            returncodes.append("unavailable")
+            result["commands"].append({"cmd": cmd, "returncode": "unavailable", "stderr_tail": str(e)[-2000:]})
+    result["ok"] = any(code == 0 for code in returncodes)
+    result["summary"] = "mined reference repos and pattern hits" if result["ok"] else "ghmax commands failed"
+    return result
+
+
+def make_report(
+    repo: Path,
+    out_dir: Path,
+    timeout: int,
+    no_checks: bool = False,
+    no_security: bool = False,
+    full_map: bool = True,
+    ghmax: bool = False,
+    ghmax_query: str = "",
+    check_profile: str = "safe",
+) -> dict:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if full_map and os.environ.get("DEBUGMASTER_NO_GREPGOD") != "1" and shutil.which("grepgod"):
+        try:
+            run(["grepgod", "--chain", "map", str(repo)], timeout=timeout)
+        except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError, OSError):
+            pass
+    h = health(repo)
+    struct = structure(repo)
+    languages = detected_languages(repo, struct)
+    report = {
+        "repo": str(repo),
+        "identity": repo_identity(repo),
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "health": h,
+        "structure": struct,
+        "languages": languages,
+        "grepgod_index": {} if os.environ.get("DEBUGMASTER_NO_GREPGOD") == "1" else load_grepgod_index(repo),
+        "checks": [] if no_checks else run_checks(repo, timeout, profile=check_profile, languages=languages),
+        "check_profile": check_profile,
+        "security": {} if no_security else run_security(repo, timeout),
+        "recommended_engines": stack_engines(repo, languages),
+        "flows": TOP_FLOWS,
+        "ghmax": run_ghmax(repo, out_dir, ghmax_query) if ghmax else {"ok": None, "summary": "not requested", "files": []},
+        "repovista_reference": {
+            "package": "repovista",
+            "latest_seen": "0.5.1",
+            "published_seen": "2026-05-29",
+            "concepts_adapted": ["read-only audit", "markdown + machine-readable reports", "provider/engine metadata", "AI handoff artifact"],
+        },
+        "engines": {
+            "catalog_tools": len(load_json(CATALOG, {"tools": []}).get("tools", [])),
+            "available": {
+                name: command_available(name)
+                for name in ("grepgod", "git", "rg", "jq", "semgrep", "gitleaks", "osv-scanner", "cargo", "pytest", "just", "node", "repovista", "ghmax")
+            },
+        },
+    }
+    report["verdict"] = verdict(report)
+    report["next_fixes"] = next_fixes(report)
+    return report
+
+
+def write_report(report: dict, out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "debugmaster-report.json").write_text(json.dumps(report, indent=2))
+    (out_dir / "debugmaster-report.md").write_text(markdown_report(report))
+    (out_dir / "debugmaster-ai-brief.md").write_text(ai_brief(report))
+
+
+def report_summary(report: dict, out_dir: Path) -> dict:
+    h = report["health"]
+    return {
+        "verdict": report["verdict"],
+        "repo": str(report["repo"]),
+        "out": str(out_dir),
+        "checks": f"{sum(1 for c in report['checks'] if c['ok'])}/{len(report['checks'])}",
+        "dirty_files": h.get("changed_files"),
+        "impact": h.get("impact"),
+    }
+
+
+def discover_repos(root: Path, limit: int, randomize: bool = False) -> list[Path]:
+    repos = []
+    for git_dir in root.rglob(".git"):
+        repo = git_dir.parent
+        rel_parts = repo.relative_to(root).parts if repo != root else ()
+        if any(part in GENERATED_DIRS or part in {"node_modules", "target", "dist", "build", ".venv", "venv"} for part in rel_parts):
+            continue
+        repos.append(repo)
+    repos = sorted(set(repos), key=lambda p: str(p))
+    if randomize:
+        random.shuffle(repos)
+    return repos[:limit]
+
+
+def batch_markdown(batch: dict) -> str:
+    lines = [
+        "# Debugmaster Batch Report",
+        "",
+        f"Generated: `{batch['generated_at']}`",
+        f"Root: `{batch.get('root', '')}`",
+        f"Repos: **{len(batch['repos'])}**",
+        "",
+        "| verdict | repo | checks | dirty | impact | report |",
+        "|---|---|---:|---:|---:|---|",
+    ]
+    for row in batch["repos"]:
+        lines.append(
+            f"| {row['verdict']} | `{row['name']}` | {row['checks']} | {row['dirty_files']} | {row['impact']} | `{row['report_md']}` |"
+        )
+    lines += ["", "## Next Fix Queue", ""]
+    for row in batch["repos"]:
+        for fix in row.get("next_fixes", [])[:2]:
+            lines.append(f"- **{row['name']}**: {fix['title']} — `{fix['target']}` ({fix['reason']})")
+    return "\n".join(lines) + "\n"
+
+
+def safe_autofix(repo: Path, apply: bool = False) -> dict:
+    changed = git_changed(repo)
+    targets = [repo / row["path"] for row in changed] if changed else []
+    text_exts = {".md", ".py", ".sh", ".bash", ".zsh", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml", ".toml", ".rs", ".go", ".css", ".html"}
+    candidates = []
+    changed_files = []
+    for path in targets[:200]:
+        if not path.exists() or path.suffix.lower() not in text_exts or path.stat().st_size > 1_000_000:
+            continue
+        text = path.read_text(errors="ignore")
+        fixed = "\n".join(line.rstrip() for line in text.splitlines())
+        if text.endswith("\n"):
+            fixed += "\n"
+        if fixed != text:
+            candidates.append(str(path.relative_to(repo)))
+            if apply:
+                path.write_text(fixed)
+                changed_files.append(str(path.relative_to(repo)))
+    commands = []
+    if (repo / "Cargo.toml").exists() and command_available("cargo"):
+        commands.append(["cargo", "fmt", "--all"])
+    scripts = package_scripts(repo)
+    if "format" in scripts:
+        commands.append(["npm", "run", "format"])
+    if apply:
+        for cmd in commands:
+            run(cmd, cwd=repo, timeout=120)
+    return {
+        "mode": "apply" if apply else "dry-run",
+        "safe_whitespace_candidates": candidates,
+        "changed_files": changed_files,
+        "format_commands": commands,
+        "note": "Only trailing whitespace in already-dirty text files is changed. Format commands run only with --apply.",
+    }
+
+
+def cmd_scan(args) -> int:
+    repos = [Path(p).expanduser().resolve() for p in (args.repos or ["."])]
+    print("repo\tstatus\tengine\tdirty\tchanged_files\timpact\tpackages")
+    for repo in repos:
+        if not repo.exists():
+            continue
+        h = health(repo)
+        print(
+            f"{h['repo']}\t{h['status']}\t{h['engine']}\t{str(h['dirty']).lower()}\t"
+            f"{h['changed_files']}\t{h['impact']}\t{h['packages']}"
+        )
+    return 0
+
+
+def cmd_repo(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    if args.full and shutil.which("grepgod"):
+        subprocess.run(["grepgod", "--chain", "map", str(repo)], check=False)
+    h = health(repo)
+    print(json.dumps(h, indent=2))
+    return 0
+
+
+def cmd_top_risk(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    h = health(repo)
+    rows = sorted(h.get("top_changed", []), key=lambda r: r.get("score", 0), reverse=True)
+    for row in rows[: args.limit]:
+        score = row.get("score", 0)
+        risks = row.get("nearby_risks", 0)
+        fanin = row.get("max_fanin", 0)
+        print(f"{score:>4} risks={risks:<3} fanin={fanin:<3} {row.get('path')}")
+    return 0
+
+
+def cmd_codex_brief(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    h = health(repo)
+    print("# Debugmaster Codex Brief\n")
+    print(f"Repo: `{repo}`")
+    print(f"Status: **{h['status']}** via `{h['engine']}`")
+    print(f"Dirty files: **{h['changed_files']}** · impact: **{h['impact']}** · packages: **{h['packages']}**\n")
+    print("## Next Commands\n")
+    print("```bash")
+    print("grepgod --chain map .")
+    print("grepgod healthmap .")
+    print('grepgod ask . "risks"')
+    print('grepgod ask . "hotspots"')
+    print("git status --short --branch")
+    print("```\n")
+    print("## Highest Impact Dirty Files\n")
+    for row in h.get("top_changed", [])[: args.limit]:
+        print(f"- `{row.get('path')}` score={row.get('score', 0)} risks={row.get('nearby_risks', 0)}")
+    return 0
+
+
+def cmd_catalog(args) -> int:
+    data = load_json(CATALOG, {"tools": []})
+    q = (args.query or "").lower()
+    rows = data.get("tools", [])
+    if q:
+        rows = [
+            r for r in rows
+            if q in r.get("name", "").lower()
+            or q in r.get("category", "").lower()
+            or q in r.get("best_feature", "").lower()
+            or q in r.get("debugmaster_use", "").lower()
+        ]
+    for r in rows[: args.limit]:
+        print(f"{r['name']}\t{r['category']}\t{r['best_feature']}\t{r['debugmaster_use']}")
+    return 0
+
+
+def cmd_engines(_args) -> int:
+    data = load_json(CATALOG, {"feature_layers": [], "tools": []})
+    print(f"Feature layers: {len(data.get('feature_layers', []))}")
+    for layer in data.get("feature_layers", []):
+        print(f"- {layer}")
+    print(f"\nTools cataloged: {len(data.get('tools', []))}")
+    print(f"Language/framework stacks: {len(LANGUAGE_MATRIX)}")
+    return 0
+
+
+def cmd_flows(args) -> int:
+    rows = TOP_FLOWS
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    for flow in rows:
+        print(f"{flow['name']}\n  trigger: {flow['trigger']}\n  steps:")
+        for step in flow["steps"]:
+            print(f"  - {step}")
+        print(f"  output: {flow['output']}\n")
+    return 0
+
+
+def cmd_init(args) -> int:
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / ".gitignore").write_text("*\n!.gitignore\n")
+    tools = {
+        name: command_available(name)
+        for name in ("python3", "git", "grepgod", "ghmax", "rg", "jq", "semgrep", "gitleaks", "osv-scanner", "cargo", "pytest", "just", "node", "repovista")
+    }
+    if args.link:
+        target = Path.home() / ".local" / "bin"
+        target.mkdir(parents=True, exist_ok=True)
+        link = target / "debugmaster"
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to(ROOT / "bin" / "debugmaster")
+    print(json.dumps({"ok": tools.get("python3") and tools.get("git"), "tools": tools, "reports": str(REPORTS)}, indent=2))
+    if not tools.get("grepgod"):
+        print("debugmaster: grepgod not found; standalone fallback remains available.", file=sys.stderr)
+    return 0 if tools.get("python3") and tools.get("git") else 2
+
+
+def cmd_engines_install(args) -> int:
+    """Onboard the optional best-in-class engine stack (biome, golangci-lint,
+    py-spy, delve, …). Thin wrapper over install-engines.sh so `doctor` and the
+    installer speak the same group vocabulary."""
+    script = ROOT / "install-engines.sh"
+    if not script.exists():
+        print(f"missing installer: {script}", file=sys.stderr)
+        return 2
+    cmd = ["bash", str(script)]
+    if getattr(args, "yes", False):
+        cmd.append("--yes")
+    if getattr(args, "dry_run", False):
+        cmd.append("--dry-run")
+    if getattr(args, "list", False):
+        cmd.append("--list")
+    if getattr(args, "only", None):
+        cmd += ["--only", args.only]
+    return subprocess.run(cmd).returncode
+
+
+def cmd_autofix(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    result = safe_autofix(repo, apply=args.apply)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_mine(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    out_dir = Path(args.out).expanduser().resolve() if args.out else REPORTS / repo.name
+    result = run_ghmax(repo, out_dir, args.query, args.limit)
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok") is not False else 1
+
+
+def cmd_batch(args) -> int:
+    root = Path(args.root).expanduser().resolve()
+    repos = [Path(p).expanduser().resolve() for p in args.repos] if args.repos else discover_repos(root, args.limit, args.random)
+    out_dir = Path(args.out).expanduser().resolve() if args.out else REPORTS / f"batch-{time.strftime('%Y%m%d-%H%M%S')}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for repo in repos:
+        repo_out = out_dir / repo.name
+        report = make_report(
+            repo,
+            repo_out,
+            timeout=args.timeout,
+            no_checks=args.no_checks,
+            no_security=args.no_security,
+            full_map=args.full_map,
+            ghmax=args.ghmax,
+            ghmax_query=args.ghmax_query,
+            check_profile=args.check_profile,
+        )
+        write_report(report, repo_out)
+        summary = report_summary(report, repo_out)
+        summary.update({
+            "name": repo.name,
+            "path": str(repo),
+            "report_md": str(repo_out / "debugmaster-report.md"),
+            "report_json": str(repo_out / "debugmaster-report.json"),
+            "next_fixes": report.get("next_fixes", []),
+        })
+        rows.append(summary)
+    batch = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "root": str(root), "repos": rows}
+    (out_dir / "debugmaster-batch-report.json").write_text(json.dumps(batch, indent=2))
+    (out_dir / "debugmaster-batch-report.md").write_text(batch_markdown(batch))
+    print(json.dumps({"out": str(out_dir), "repos": len(rows), "fail": sum(1 for r in rows if r["verdict"] == "FAIL"), "warn": sum(1 for r in rows if r["verdict"] == "WARN")}, indent=2))
+    return 0 if not any(r["verdict"] == "FAIL" for r in rows) else 1
+
+
+def cmd_init_ci(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    src = TEMPLATES / "github-actions" / "debugmaster.yml"
+    dst = repo / ".github" / "workflows" / "debugmaster.yml"
+    if not src.exists():
+        print(f"missing template: {src}", file=sys.stderr)
+        return 2
+    if dst.exists() and not args.force:
+        print(f"exists: {dst} (use --force)", file=sys.stderr)
+        return 1
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(src.read_text())
+    print(json.dumps({"written": str(dst)}, indent=2))
+    return 0
+
+
+def cmd_all(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    out_dir = Path(args.out).expanduser().resolve() if args.out else REPORTS / repo.name
+    report = make_report(repo, out_dir, args.timeout, args.no_checks, args.no_security, args.full_map, args.ghmax, args.ghmax_query, args.check_profile)
+    write_report(report, out_dir)
+    print(json.dumps(report_summary(report, out_dir), indent=2))
+    return 0 if report["verdict"] != "FAIL" else 1
+
+
+def cmd_hunt(args) -> int:
+    from lib import hunt as _hunt
+    repo = Path(args.repo).expanduser().resolve()
+    out_dir = Path(args.out).expanduser().resolve() if args.out else REPORTS / repo.name
+    rep = _hunt.hunt(
+        repo, profile=args.profile, fuse=not args.no_fuse, limit=args.limit,
+        dirty_only=args.dirty, scan_limit=args.scan_limit, timeout=args.timeout,
+        record=not args.no_record, use_cache=not args.no_cache,
+    )
+    if getattr(args, "triage", False):
+        from lib import triage as _triage
+        rep["triage"] = _triage.triage(repo, rep["top_suspects"], max_n=args.triage_n)
+    _hunt.write(rep, out_dir)
+    if args.json:
+        print(json.dumps(rep, indent=2))
+    else:
+        print(_hunt.markdown(rep))
+    print(f"\n# reports → {out_dir}/debugmaster-hunt.{{md,json}} · ai-brief", file=sys.stderr)
+    return 0 if rep["verdict"] in ("CLEAN", "WARN") else 1
+
+
+def cmd_fusion(args) -> int:
+    from lib import fusion as _fusion
+    repo = Path(args.repo).expanduser().resolve()
+    res = _fusion.run(repo, profile=args.profile, timeout=args.timeout)
+    deduped = _fusion.dedupe(res["findings"])
+    print(json.dumps({
+        "scanners": res["scanners"],
+        "total": len(deduped),
+        "findings": [f.as_dict() for f in deduped[: args.limit]],
+    }, indent=2))
+    return 0
+
+
+def cmd_learn_feedback(args) -> int:
+    from lib import learn as _learn
+    repo = Path(args.repo).expanduser().resolve()
+    real = args.verdict.lower() in ("real", "true", "confirm", "confirmed", "yes", "1")
+    res = _learn.feedback(repo, args.file, args.line, args.rule_id, real)
+    print(json.dumps(res, indent=2))
+    return 0
+
+
+def cmd_learn_stats(args) -> int:
+    from lib import learn as _learn
+    repo = Path(args.repo).expanduser().resolve()
+    print(json.dumps(_learn.stats(repo), indent=2))
+    return 0
+
+
+def cmd_scan_bugs(args) -> int:
+    from lib import bizlogic as _biz
+    from lib import bughunt as _bh
+    from lib import hunt as _hunt
+    repo = Path(args.repo).expanduser().resolve()
+    only = None
+    if args.dirty:
+        only = set(_hunt.git_changed(repo))
+    langs = set(args.lang.split(",")) if args.lang else None
+    findings = _bh.scan_repo(repo, langs=langs, only_files=only)
+    findings += _biz.scan_repo(repo, only_files=only)  # business-logic engine
+    if args.cls:
+        findings = [f for f in findings if args.cls in f.rule_id]
+    findings.sort(key=lambda f: (-_hunt.common.SEVERITY_RANK.get(f.severity, 0), f.file, f.line))
+    by_sev = {}
+    for f in findings:
+        by_sev[f.severity] = by_sev.get(f.severity, 0) + 1
+    print(json.dumps({"total": len(findings), "by_severity": by_sev,
+                      "findings": [f.as_dict() for f in findings[: args.limit]]}, indent=2))
+    return 0 if not any(f.severity in ("critical", "high") for f in findings) else 1
+
+
+def cmd_doctor(args) -> int:
+    from lib import doctor as _doctor
+    print(json.dumps(_doctor.audit(), indent=2))
+    return 0
+
+
+def cmd_mcp(args) -> int:
+    from lib import mcp_server
+    return mcp_server.serve()
+
+
+def cmd_checks(args) -> int:
+    from lib import bizcatalog
+    if args.stats:
+        print(json.dumps(bizcatalog.stats(), indent=2))
+        return 0
+    rows = bizcatalog.query(args.query, domain=args.domain or None,
+                            kind=args.kind or None, detected=args.detected)
+    if args.json:
+        print(json.dumps(rows[: args.limit], indent=2))
+        return 0
+    for r in rows[: args.limit]:
+        flag = f"🤖 {r['detector']}" if r["detector"] else r["search"]
+        print(f"{r['name']:42} {r['domain']:13} {r['kind']:9} {flag}")
+    print(f"\n# {len(rows)} checks (of 200) · {sum(1 for r in rows if r['detector'])} auto-detected by hunt",
+          file=sys.stderr)
+    return 0
+
+
+def cmd_watch(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    try:
+        _flows.watch(repo, interval=args.interval)
+    except KeyboardInterrupt:
+        print("\n# stopped", file=sys.stderr)
+    return 0
+
+
+def cmd_regress(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    res = _flows.regress(repo, args.file, args.rule_id, line=args.line)
+    print(json.dumps(res, indent=2))
+    return 0 if res.get("ok") else 1
+
+
+def cmd_profile(args) -> int:
+    from lib import profile as _profile
+    cmd = list(args.cmd or [])
+    if cmd and cmd[0] == "--":
+        cmd = cmd[1:]
+    if cmd:
+        r = _profile.profile_command(cmd, interval=args.interval,
+                                     max_seconds=args.max_seconds, sample_fds=not args.no_fds)
+    elif args.pid:
+        r = _profile.profile_pid(args.pid, duration=args.duration,
+                                 interval=args.interval, sample_fds=not args.no_fds)
+    else:
+        print("profile: give a command after `--`, or --pid <N>", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(r, indent=2))
+    else:
+        print(_profile.markdown(r))
+    return 0 if r.get("verdict") == "CLEAN" else 1
+
+
+def cmd_audit(args) -> int:
+    from lib import audit as _audit
+    repo = Path(args.repo).expanduser().resolve()
+    out_dir = Path(args.out).expanduser().resolve() if args.out else REPORTS / repo.name
+    a = _audit.audit(repo, profile=args.profile, fuse=not args.no_fuse,
+                     timeout=args.timeout, save_baseline=args.save_baseline)
+    _audit.write(a, out_dir)
+    if args.json:
+        print(json.dumps(a, indent=2))
+    else:
+        print(_audit.markdown(a))
+    print(f"\n# reports → {out_dir}/debugmaster-audit.{{md,json}}", file=sys.stderr)
+    return 0 if a["release_readiness"] == "SHIP" else 1
+
+
+def cmd_review(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    res = _flows.review(repo, base=args.base or None, profile=args.profile,
+                        timeout=args.timeout, fuse=not args.no_fuse)
+    if args.comment:
+        body = _flows.review_comment_markdown(res)
+        posted = _flows.post_pr_comment(repo, body, pr=args.pr or None)
+        res["comment_posted"] = posted
+        if not posted.get("posted"):
+            print(body, file=sys.stderr)  # so it isn't lost when no gh/glab
+    print(json.dumps(res, indent=2))
+    return 0 if res["decision"] != "REQUEST-CHANGES" else 1
+
+
+def cmd_bisect(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    res = _flows.bisect(repo, args.good, args.bad, args.test, timeout=args.timeout)
+    print(json.dumps(res, indent=2))
+    return 0 if res.get("ok") else 1
+
+
+def cmd_explain(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    trace = sys.stdin.read() if args.trace == "-" else args.trace
+    print(json.dumps(_flows.explain(repo, trace), indent=2))
+    return 0
+
+
+def cmd_fix_verify(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    res = _flows.fix_verify(repo, args.file, args.rule_id, line=args.line)
+    print(json.dumps(res, indent=2))
+    return 0 if res["fixed"] else 1
+
+
+def cmd_install_hooks(args) -> int:
+    from lib import flows as _flows
+    repo = Path(args.repo).expanduser().resolve()
+    res = _flows.install_hooks(repo)
+    print(json.dumps(res, indent=2))
+    return 0 if res.get("ok") else 1
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="debugmaster")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    hunt_p = sub.add_parser("hunt", help="find the smallest hidden bugs, ranked by impact")
+    hunt_p.add_argument("repo", nargs="?", default=".")
+    hunt_p.add_argument("--out", default="")
+    hunt_p.add_argument("--profile", choices=["fast", "deep"], default="fast")
+    hunt_p.add_argument("--no-fuse", action="store_true", help="skip external scanners")
+    hunt_p.add_argument("--dirty", action="store_true", help="scan only git-dirty files")
+    hunt_p.add_argument("-n", "--limit", type=int, default=25)
+    hunt_p.add_argument("--scan-limit", type=int, default=6000)
+    hunt_p.add_argument("--timeout", type=int, default=90)
+    hunt_p.add_argument("--no-record", action="store_true", help="do not persist findings to learn.db")
+    hunt_p.add_argument("--no-cache", action="store_true", help="ignore the clean-HEAD report cache")
+    hunt_p.add_argument("--triage", action="store_true", help="LLM second-opinion (local Ollama) on top suspects: real vs false-positive")
+    hunt_p.add_argument("--triage-n", type=int, default=10, help="how many top suspects to triage")
+    hunt_p.add_argument("--json", action="store_true")
+    hunt_p.set_defaults(func=cmd_hunt)
+
+    fuse_p = sub.add_parser("fusion", help="run + normalize all installed scanners")
+    fuse_p.add_argument("repo", nargs="?", default=".")
+    fuse_p.add_argument("--profile", choices=["fast", "deep"], default="fast")
+    fuse_p.add_argument("--timeout", type=int, default=90)
+    fuse_p.add_argument("-n", "--limit", type=int, default=40)
+    fuse_p.set_defaults(func=cmd_fusion)
+
+    lf = sub.add_parser("learn-feedback", help="confirm/dismiss a finding to teach the ranker")
+    lf.add_argument("file")
+    lf.add_argument("line", type=int)
+    lf.add_argument("rule_id")
+    lf.add_argument("verdict", help="real|fake")
+    lf.add_argument("--repo", default=".")
+    lf.set_defaults(func=cmd_learn_feedback)
+
+    ls = sub.add_parser("learn-stats", help="show learned per-rule precision")
+    ls.add_argument("--repo", default=".")
+    ls.set_defaults(func=cmd_learn_stats)
+
+    sb = sub.add_parser("scan-bugs", help="fast static hidden-bug scan (no fusion/history)")
+    sb.add_argument("repo", nargs="?", default=".")
+    sb.add_argument("--dirty", action="store_true", help="scan only git-dirty files")
+    sb.add_argument("--lang", default="", help="comma list, e.g. python,rust,go")
+    sb.add_argument("--class", dest="cls", default="", help="filter rule_id substring, e.g. secret")
+    sb.add_argument("-n", "--limit", type=int, default=100)
+    sb.set_defaults(func=cmd_scan_bugs)
+
+    doc = sub.add_parser("doctor", help="capability self-audit: which hunt layers are live")
+    doc.set_defaults(func=cmd_doctor)
+
+    mcp = sub.add_parser("mcp", help="run as an MCP server (stdio) — exposes hunt/audit/review/explain/profile as agent tools")
+    mcp.set_defaults(func=cmd_mcp)
+
+    ck = sub.add_parser("checks", help="business-debug catalog: 200 revenue/billing failure surfaces as ready searches + mapped detectors")
+    ck.add_argument("query", nargs="?")
+    ck.add_argument("--domain", default="", help="payments|billing|invoice|subscription|refunds|checkout|ledger|tax|pricing|fulfillment|fraud|customer|revenue|webhook")
+    ck.add_argument("--kind", default="", choices=["", "product", "primitive"])
+    ck.add_argument("--detected", action="store_true", help="only checks debugmaster auto-detects")
+    ck.add_argument("--stats", action="store_true", help="counts by domain + detector coverage")
+    ck.add_argument("-n", "--limit", type=int, default=60)
+    ck.add_argument("--json", action="store_true")
+    ck.set_defaults(func=cmd_checks)
+
+    wt = sub.add_parser("watch", help="re-scan changed files on every save (Ctrl-C to stop)")
+    wt.add_argument("repo", nargs="?", default=".")
+    wt.add_argument("--interval", type=float, default=2.0)
+    wt.set_defaults(func=cmd_watch)
+
+    rg = sub.add_parser("regress", help="generate a runnable pytest that locks a confirmed finding as fixed")
+    rg.add_argument("file")
+    rg.add_argument("rule_id")
+    rg.add_argument("line", nargs="?", type=int, default=0)
+    rg.add_argument("--repo", default=".")
+    rg.set_defaults(func=cmd_regress)
+
+    pf = sub.add_parser("profile", help="runtime diagnostician: memory/fd/thread/gpu leaks, cpu bottlenecks, orphan processes")
+    pf.add_argument("--pid", type=int, help="attach to a running pid's process tree")
+    pf.add_argument("--duration", type=int, default=20, help="seconds to sample in --pid mode")
+    pf.add_argument("--interval", type=float, default=0.5, help="sample interval seconds")
+    pf.add_argument("--max-seconds", type=int, default=900, help="cap on command-mode runtime")
+    pf.add_argument("--no-fds", action="store_true", help="skip file-descriptor sampling (faster)")
+    pf.add_argument("--json", action="store_true")
+    pf.add_argument("cmd", nargs=argparse.REMAINDER, help="-- <command to run and profile>")
+    pf.set_defaults(func=cmd_profile)
+
+    au = sub.add_parser("audit", help="super-audit: graded whole-repo health verdict + release readiness + trend")
+    au.add_argument("repo", nargs="?", default=".")
+    au.add_argument("--out", default="")
+    au.add_argument("--profile", choices=["fast", "deep"], default="fast")
+    au.add_argument("--no-fuse", action="store_true", help="skip external scanners")
+    au.add_argument("--timeout", type=int, default=90)
+    au.add_argument("--save-baseline", action="store_true", help="store this audit as the trend baseline")
+    au.add_argument("--json", action="store_true")
+    au.set_defaults(func=cmd_audit)
+
+    rv = sub.add_parser("review", help="is this change safe? hunt scoped to the diff, PR verdict")
+    rv.add_argument("repo", nargs="?", default=".")
+    rv.add_argument("--base", default="", help="base ref (e.g. main); default = working-tree changes")
+    rv.add_argument("--profile", choices=["fast", "deep"], default="fast")
+    rv.add_argument("--no-fuse", action="store_true", help="skip external scanners")
+    rv.add_argument("--timeout", type=int, default=90)
+    rv.add_argument("--comment", action="store_true", help="post the verdict as a PR/MR comment (gh/glab)")
+    rv.add_argument("--pr", default="", help="PR/MR number (default: current branch's PR)")
+    rv.set_defaults(func=cmd_review)
+
+    bi = sub.add_parser("bisect", help="auto git-bisect a test command to the first bad commit")
+    bi.add_argument("repo", nargs="?", default=".")
+    bi.add_argument("--good", required=True, help="known-good ref")
+    bi.add_argument("--bad", required=True, help="known-bad ref")
+    bi.add_argument("--test", required=True, help="command that exits non-zero on the bug")
+    bi.add_argument("--timeout", type=int, default=600)
+    bi.set_defaults(func=cmd_bisect)
+
+    ex = sub.add_parser("explain", help="localize a stacktrace into the repo + show suspects")
+    ex.add_argument("trace", nargs="?", default="-", help="stacktrace text, or - for stdin")
+    ex.add_argument("--repo", default=".")
+    ex.set_defaults(func=cmd_explain)
+
+    fv = sub.add_parser("fix-verify", help="run a finding's verify command, re-scan, auto-learn on pass")
+    fv.add_argument("file")
+    fv.add_argument("rule_id")
+    fv.add_argument("line", nargs="?", type=int, default=0)
+    fv.add_argument("--repo", default=".")
+    fv.set_defaults(func=cmd_fix_verify)
+
+    ih = sub.add_parser("install-hooks", help="install a pre-commit gate that runs review")
+    ih.add_argument("repo", nargs="?", default=".")
+    ih.set_defaults(func=cmd_install_hooks)
+
+    scan = sub.add_parser("scan")
+    scan.add_argument("repos", nargs="*")
+    scan.set_defaults(func=cmd_scan)
+
+    repo = sub.add_parser("repo")
+    repo.add_argument("repo")
+    repo.add_argument("--full", action="store_true")
+    repo.set_defaults(func=cmd_repo)
+
+    risk = sub.add_parser("top-risk")
+    risk.add_argument("repo", nargs="?", default=".")
+    risk.add_argument("-n", "--limit", type=int, default=20)
+    risk.set_defaults(func=cmd_top_risk)
+
+    brief = sub.add_parser("codex-brief")
+    brief.add_argument("repo", nargs="?", default=".")
+    brief.add_argument("-n", "--limit", type=int, default=12)
+    brief.set_defaults(func=cmd_codex_brief)
+
+    catalog = sub.add_parser("catalog")
+    catalog.add_argument("query", nargs="?")
+    catalog.add_argument("-n", "--limit", type=int, default=30)
+    catalog.set_defaults(func=cmd_catalog)
+
+    engines = sub.add_parser("engines")
+    engines.set_defaults(func=cmd_engines)
+
+    flows = sub.add_parser("flows")
+    flows.add_argument("--json", action="store_true")
+    flows.set_defaults(func=cmd_flows)
+
+    init = sub.add_parser("init")
+    init.add_argument("--link", action="store_true", help="symlink debugmaster into ~/.local/bin")
+    init.set_defaults(func=cmd_init)
+
+    ei = sub.add_parser("engines-install", help="install the optional best-in-class engine stack (biome, golangci-lint, py-spy, delve, …)")
+    ei.add_argument("--yes", "-y", action="store_true", help="install without prompting")
+    ei.add_argument("--dry-run", action="store_true", help="print the plan, install nothing")
+    ei.add_argument("--list", action="store_true", help="list groups + tools, then exit")
+    ei.add_argument("--only", default="", help="comma-separated groups: fusion,js,go,rust,python-debug,native,llm,ml")
+    ei.set_defaults(func=cmd_engines_install)
+
+    autofix = sub.add_parser("autofix", help="plan or apply safe low-risk fixes")
+    autofix.add_argument("repo", nargs="?", default=".")
+    autofix.add_argument("--apply", action="store_true", help="apply safe fixes; default is dry-run")
+    autofix.set_defaults(func=cmd_autofix)
+
+    mine = sub.add_parser("mine", help="use ghmax to mine reference repos and patterns")
+    mine.add_argument("repo", nargs="?", default=".")
+    mine.add_argument("--query", default="")
+    mine.add_argument("--out", default="")
+    mine.add_argument("-n", "--limit", type=int, default=8)
+    mine.set_defaults(func=cmd_mine)
+
+    batch = sub.add_parser("batch", help="scan many repos and write aggregate reports")
+    batch.add_argument("repos", nargs="*")
+    batch.add_argument("--root", default=".")
+    batch.add_argument("--out", default="")
+    batch.add_argument("--limit", type=int, default=5)
+    batch.add_argument("--random", action="store_true")
+    batch.add_argument("--timeout", type=int, default=60)
+    batch.add_argument("--no-checks", action="store_true")
+    batch.add_argument("--security", dest="no_security", action="store_false", help="run optional security scan")
+    batch.add_argument("--no-security", dest="no_security", action="store_true", help="skip optional security scan")
+    batch.set_defaults(no_security=True)
+    batch.add_argument("--full-map", action=argparse.BooleanOptionalAction, default=False)
+    batch.add_argument("--ghmax", action="store_true")
+    batch.add_argument("--ghmax-query", default="")
+    batch.add_argument("--check-profile", choices=["safe", "standard", "deep"], default="safe")
+    batch.set_defaults(func=cmd_batch)
+
+    ci = sub.add_parser("init-ci", help="install GitHub Actions PR report workflow into a repo")
+    ci.add_argument("repo", nargs="?", default=".")
+    ci.add_argument("--force", action="store_true")
+    ci.set_defaults(func=cmd_init_ci)
+
+    all_cmd = sub.add_parser("all")
+    all_cmd.add_argument("repo", nargs="?", default=".")
+    all_cmd.add_argument("--out", default="")
+    all_cmd.add_argument("--timeout", type=int, default=120)
+    all_cmd.add_argument("--no-checks", action="store_true")
+    all_cmd.add_argument("--security", dest="no_security", action="store_false", help="run optional security scan")
+    all_cmd.add_argument("--no-security", dest="no_security", action="store_true", help="skip optional security scan")
+    all_cmd.set_defaults(no_security=True)
+    all_cmd.add_argument("--full-map", action=argparse.BooleanOptionalAction, default=False)
+    all_cmd.add_argument("--ghmax", action="store_true", help="mine ghmax reference repos and pattern hits")
+    all_cmd.add_argument("--ghmax-query", default="")
+    all_cmd.add_argument("--check-profile", choices=["safe", "standard", "deep"], default="safe")
+    all_cmd.set_defaults(func=cmd_all)
+
+    args = ap.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

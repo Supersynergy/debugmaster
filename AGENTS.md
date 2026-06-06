@@ -15,8 +15,10 @@ Do not bump deps/toolchain without a green `just check`.
 
 ## Layout
 
-- `src/main.rs` — clap CLI: `hunt`, `sessions`, `legacy` (forwards unknown
-  subcommands to the Python `debugmastery` binary on PATH).
+- `src/main.rs` — clap CLI: `hunt`, `sessions`, `doctor`, `legacy` (runs
+  deep/unknown subcommands through the bundled engine in `engine/`).
+- `src/engine.rs` — resolves and runs the bundled Python engine (no PATH dep).
+- `src/doctor.rs` — native capability self-audit (core + engine + scanners).
 - `src/walk.rs` — gitignore-aware file walk; `lang_of` maps extensions → language.
 - `src/rules.rs` — regex static rules (all languages).
 - `src/bizlogic.rs` — Python business-logic detectors (tree-sitter / regex).

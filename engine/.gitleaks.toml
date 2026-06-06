@@ -1,0 +1,20 @@
+# gitleaks config for debugmaster.
+# debugmaster's own job is to *find* hardcoded secrets, so its test suite and
+# generated reports deliberately contain obviously-fake secrets to exercise the
+# `secret-literal` detector. Those are allowlisted here; real-secret detection
+# stays fully active everywhere else.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Planted fake secrets in tests/generated reports (fixtures for the secret detector)."
+paths = [
+  '''tests/.*''',
+  '''reports/.*''',
+  '''.*\.pyc$''',
+]
+regexes = [
+  # the exact fake Stripe key used as a fixture in tests/test_engines.py
+  '''sk_live_ABCDEF1234567890''',
+]

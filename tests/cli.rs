@@ -55,18 +55,26 @@ fn sessions_reads_codex_jsonl_transcripts() -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
+/// Engine commands must run the engine *bundled inside this tool* — never a
+/// `debugmastery` binary that happens to be on PATH. We put a sabotage shim
+/// named `debugmastery` on PATH and assert it is ignored.
 #[test]
-fn legacy_commands_forward_to_debugmastery() -> Result<(), Box<dyn std::error::Error>> {
+fn engine_commands_use_bundled_engine_not_path() -> Result<(), Box<dyn std::error::Error>> {
+    // Hermetic only when python3 is present (the engine interpreter).
+    let have_python = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d.join("python3").is_file()))
+        .unwrap_or(false);
+    if !have_python {
+        return Ok(());
+    }
+
     let root = temp_root("forward")?;
     let shim = root.join("debugmastery");
-    fs::write(
-        &shim,
-        "#!/bin/sh\nprintf 'debugmastery-called:%s:%s\\n' \"$1\" \"$2\"\n",
-    )?;
-    let mut perms = fs::metadata(&shim)?.permissions();
+    fs::write(&shim, "#!/bin/sh\nprintf 'SABOTAGE-should-never-run\\n'\n")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&shim)?.permissions();
         perms.set_mode(0o755);
         fs::set_permissions(&shim, perms)?;
     }
@@ -76,14 +84,19 @@ fn legacy_commands_forward_to_debugmastery() -> Result<(), Box<dyn std::error::E
         root.display(),
         std::env::var("PATH").unwrap_or_default()
     );
+    // `checks --stats` is a bundled-engine command (pure-stdlib catalog).
     let output = Command::new(bin())
-        .args(["doctor", "--json"])
+        .args(["checks", "--stats"])
         .env("PATH", path)
         .output()?;
 
     assert!(output.status.success(), "{output:?}");
     let stdout = String::from_utf8(output.stdout)?;
-    assert_eq!(stdout, "debugmastery-called:doctor:--json\n");
+    assert!(
+        !stdout.contains("SABOTAGE"),
+        "PATH debugmastery was used instead of the bundled engine: {stdout}"
+    );
+    assert!(stdout.contains("\"total\": 200"), "{stdout}");
     Ok(())
 }
 
@@ -117,13 +130,18 @@ fn hunt_empty_dir_is_no_files_not_clean() -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+/// The native Rust code (`src/`) stays clean enough to ship. We scan `src/`
+/// specifically, not the whole repo: the bundled `engine/` is vendored Python
+/// that ships its own planted-bug test fixtures (secrets, shell=True, …), which
+/// the native scanner correctly flags — they are not our native-code health.
 #[test]
 fn self_hunt_stays_clean_enough_to_ship() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(COVERED_MODULES, ["main", "rules", "bizlogic"]);
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let output = Command::new(bin())
         .args([
             "hunt",
-            env!("CARGO_MANIFEST_DIR"),
+            &src.display().to_string(),
             "--json",
             "--limit",
             "100",

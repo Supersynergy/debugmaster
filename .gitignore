@@ -2,3 +2,7 @@
 /.debugmaster
 /.grepgod
 /.repovista
+engine/reports/
+engine/**/__pycache__/
+engine/.ruff_cache/
+engine/.pytest_cache/

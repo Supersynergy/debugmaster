@@ -1,0 +1,39 @@
+# Debugmaster auditing its own source. Reviewed 2026-06-02 — none of these are
+# bugs; each is the engine detecting the very patterns it ships:
+#   * rule definitions contain the strings/regexes they match (`shell=True`, etc.)
+#   * tests embed intentional bug fixtures the assertions depend on
+#   * a few deliberate best-effort IO swallows and correct inclusive bounds
+# This file is also the canonical example of the .debugmaster-ignore format.
+
+# rule definitions match the patterns they describe
+lib/bughunt.py:py-shell-true
+lib/bughunt.py:unbounded-queue
+lib/bughunt.py:todo-near-auth
+lib/bizlogic.py:biz-pagination-offset
+lib/audit.py:todo-near-auth
+
+# correct inclusive bounds checks: 0 < line <= len(...)
+lib/bughunt.py:off-by-one-len
+lib/bizlogic.py:off-by-one-len
+lib/gitrisk.py:off-by-one-len
+lib/suppress.py:off-by-one-len
+
+# deliberate best-effort cache/IO writes — failure is non-fatal by design
+lib/hunt.py:py-except-pass
+lib/hunt.py:py-except-pass-ast
+lib/fusion.py:py-except-pass
+lib/fusion.py:py-except-pass-ast
+lib/audit.py:py-except-pass
+lib/audit.py:py-except-pass-ast
+
+# test fixtures: intentional bug patterns the tests assert on
+tests/**:secret-literal
+tests/**:py-shell-true
+tests/**:biz-mass-assignment
+tests/**:biz-ssrf-user-url
+tests/**:biz-open-redirect
+tests/**:biz-webhook-no-signature
+tests/**:biz-client-controlled-price
+tests/**:biz-refund-client-amount
+tests/**:biz-idempotency-missing
+tests/**:py-request-no-timeout

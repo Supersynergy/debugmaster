@@ -1,4 +1,6 @@
 mod bizlogic;
+mod doctor;
+mod engine;
 mod finding;
 mod hunt;
 mod rules;
@@ -17,11 +19,11 @@ use std::process::ExitCode;
     version,
     about,
     after_help = "\
-Native Rust: hunt, sessions.
-Legacy parity: unknown commands are forwarded to `debugmastery` with the same args.
-Python legacy command surface: fusion, learn-feedback, learn-stats, scan-bugs, doctor, mcp,
-checks, watch, regress, profile, audit, review, bisect, explain, fix-verify,
-install-hooks, scan, repo, top-risk, codex-brief, catalog, engines, flows, init,
+Native Rust (no interpreter): hunt, sessions, doctor.
+Deep commands run the engine bundled inside this tool (needs python3, no second
+install): `hunt --deep`, audit, review, profile, mcp, watch, fusion, checks,
+regress, bisect, explain, fix-verify, install-hooks, scan-bugs, learn-feedback,
+learn-stats, scan, repo, top-risk, codex-brief, catalog, engines, flows, init,
 engines-install, autofix, mine, batch, init-ci, all."
 )]
 struct Cli {
@@ -32,6 +34,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Find the smallest hidden bugs, ranked by severity (incl. business-logic).
+    ///
+    /// Default is the fast native Rust scan. `--deep` runs the bundled engine's
+    /// full pipeline (tool fusion + git-history + learned precision re-ranking),
+    /// which produces a richer ranking at the cost of needing python3.
     Hunt {
         /// Repo or directory to scan.
         #[arg(default_value = ".")]
@@ -39,12 +45,21 @@ enum Cmd {
         /// Machine-readable JSON output.
         #[arg(long)]
         json: bool,
+        /// Full engine pipeline (fusion + history + learned ranking) instead of the native scan.
+        #[arg(long)]
+        deep: bool,
         /// Max files to scan.
         #[arg(long, default_value_t = 50000)]
         limit: usize,
         /// Max findings to show.
         #[arg(short = 'n', long, default_value_t = 50)]
         top: usize,
+    },
+    /// Capability self-audit: which layers (native + bundled engine + scanners) are live.
+    Doctor {
+        /// Machine-readable JSON (default human summary).
+        #[arg(long)]
+        json: bool,
     },
     /// Read Codex/Claude JSONL sessions and search their user prompts.
     Sessions {
@@ -61,7 +76,7 @@ enum Cmd {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
-    /// Forward Python-era commands to `debugmastery`.
+    /// Run deep/Python-era commands through the bundled engine.
     #[command(external_subcommand)]
     Legacy(Vec<OsString>),
 }
@@ -72,12 +87,22 @@ fn main() -> ExitCode {
         Cmd::Hunt {
             path,
             json,
+            deep,
             limit,
             top,
         } => {
             if !path.exists() {
                 eprintln!("debugmaster: path not found: {}", path.display());
                 return ExitCode::from(2);
+            }
+            if deep {
+                // Full pipeline lives in the bundled engine — one ranking, no
+                // silent divergence: native = fast, --deep = rich, by choice.
+                let mut args: Vec<OsString> = vec!["hunt".into(), path.into()];
+                if json {
+                    args.push("--json".into());
+                }
+                return engine::run(&args);
             }
             let report = hunt::hunt(&path, limit, top);
             if json {
@@ -109,24 +134,20 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Cmd::Legacy(args) => forward_legacy(args),
-    }
-}
-
-fn forward_legacy(args: Vec<OsString>) -> ExitCode {
-    if args.is_empty() {
-        return ExitCode::SUCCESS;
-    }
-    let mut cmd = std::process::Command::new("debugmastery");
-    cmd.args(args);
-    match cmd.status() {
-        Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
-        Err(err) => {
-            eprintln!(
-                "debugmaster: legacy command needs `debugmastery` on PATH: {}",
-                err
-            );
-            ExitCode::FAILURE
+        Cmd::Doctor { json } => {
+            let report = doctor::report();
+            if json {
+                print_json(&report);
+            } else {
+                print!("{}", doctor::summary(&report));
+            }
+            ExitCode::SUCCESS
+        }
+        Cmd::Legacy(args) => {
+            if args.is_empty() {
+                return ExitCode::SUCCESS;
+            }
+            engine::run(&args)
         }
     }
 }

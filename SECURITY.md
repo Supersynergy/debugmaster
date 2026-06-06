@@ -16,7 +16,7 @@ Please include:
 Security-sensitive areas include:
 
 - secret detection false negatives
-- command forwarding to `debugmastery`
+- command execution via the bundled engine (`engine/`, run through python3)
 - session transcript parsing
 - path traversal or unsafe file scanning behavior
 - panics reachable from untrusted repository content

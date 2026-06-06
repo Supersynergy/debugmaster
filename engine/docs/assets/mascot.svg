@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="640" cy="280" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#173055" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#0d1117" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0" y1="120" x2="0" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2f6fc"/>
+      <stop offset="1" stop-color="#cdd8e8"/>
+    </linearGradient>
+    <linearGradient id="visor" x1="0" y1="190" x2="0" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b2740"/>
+      <stop offset="1" stop-color="#101a2e"/>
+    </linearGradient>
+    <radialGradient id="core" cx="640" cy="392" r="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7af5e3"/>
+      <stop offset="0.6" stop-color="#38e1c9"/>
+      <stop offset="1" stop-color="#1da595"/>
+    </radialGradient>
+    <radialGradient id="eyeGlow" cx="0" cy="0" r="1" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#bafff5"/>
+      <stop offset="1" stop-color="#38e1c9"/>
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <ellipse cx="640" cy="282" rx="430" ry="300" fill="url(#glow)"/>
+
+  <!-- faint dot grid -->
+  <g fill="#9fb4d6" opacity="0.07">
+    <g id="row"><circle cx="120" cy="90" r="3"/><circle cx="220" cy="90" r="3"/><circle cx="1060" cy="90" r="3"/><circle cx="1160" cy="90" r="3"/></g>
+    <circle cx="90" cy="200" r="3"/><circle cx="1190" cy="200" r="3"/>
+    <circle cx="120" cy="470" r="3"/><circle cx="1160" cy="470" r="3"/>
+    <circle cx="220" cy="520" r="3"/><circle cx="1060" cy="520" r="3"/>
+  </g>
+
+  <!-- ground shadow -->
+  <ellipse cx="612" cy="468" rx="190" ry="26" fill="#000000" opacity="0.35" filter="url(#soft)"/>
+
+  <!-- ================= MASCOT: Codex the bug-hunter ================= -->
+  <g>
+    <!-- antenna -->
+    <rect x="606" y="92" width="8" height="46" rx="4" fill="#9fb0c8"/>
+    <circle cx="610" cy="86" r="13" fill="#ffb02e"/>
+    <circle cx="610" cy="86" r="22" fill="#ffb02e" opacity="0.25"/>
+
+    <!-- raised left arm holding the magnifier -->
+    <rect x="448" y="250" width="34" height="120" rx="17" fill="url(#body)" transform="rotate(-32 465 310)"/>
+
+    <!-- head -->
+    <rect x="470" y="132" width="280" height="208" rx="52" fill="url(#body)"/>
+    <rect x="470" y="132" width="280" height="208" rx="52" fill="none" stroke="#aebed4" stroke-width="2"/>
+    <!-- ear caps -->
+    <rect x="452" y="206" width="26" height="60" rx="13" fill="#cdd8e8"/>
+    <rect x="742" y="206" width="26" height="60" rx="13" fill="#cdd8e8"/>
+
+    <!-- visor -->
+    <rect x="500" y="186" width="220" height="104" rx="40" fill="url(#visor)"/>
+    <!-- eyes -->
+    <ellipse cx="575" cy="238" rx="26" ry="30" fill="url(#eyeGlow)"/>
+    <ellipse cx="645" cy="238" rx="26" ry="30" fill="url(#eyeGlow)"/>
+    <circle cx="568" cy="230" r="7" fill="#ffffff" opacity="0.9"/>
+    <circle cx="638" cy="230" r="7" fill="#ffffff" opacity="0.9"/>
+    <!-- friendly cheek lights -->
+    <circle cx="520" cy="300" r="6" fill="#38e1c9" opacity="0.5"/>
+    <circle cx="700" cy="300" r="6" fill="#38e1c9" opacity="0.5"/>
+
+    <!-- body -->
+    <rect x="512" y="338" width="200" height="118" rx="40" fill="url(#body)"/>
+    <rect x="512" y="338" width="200" height="118" rx="40" fill="none" stroke="#aebed4" stroke-width="2"/>
+    <!-- chest core -->
+    <circle cx="612" cy="392" r="34" fill="url(#core)"/>
+    <circle cx="612" cy="392" r="34" fill="none" stroke="#0d1117" stroke-width="3" opacity="0.25"/>
+    <path d="M598 392 h28 M612 378 v28" stroke="#0a4d45" stroke-width="5" stroke-linecap="round" opacity="0.55"/>
+
+    <!-- right arm resting -->
+    <rect x="700" y="356" width="34" height="86" rx="17" fill="url(#body)"/>
+
+    <!-- ============ magnifying glass (held up, scanning) ============ -->
+    <g>
+      <circle cx="392" cy="226" r="74" fill="#0d1117" opacity="0.55"/>
+      <circle cx="392" cy="226" r="74" fill="#0e2436" opacity="0.6"/>
+      <circle cx="392" cy="226" r="74" fill="none" stroke="#e8eef7" stroke-width="14"/>
+      <circle cx="392" cy="226" r="74" fill="none" stroke="#38e1c9" stroke-width="4" opacity="0.8"/>
+      <!-- lens shine -->
+      <path d="M356 196 a52 52 0 0 1 40 -20" stroke="#ffffff" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.6"/>
+      <!-- handle -->
+      <rect x="430" y="266" width="30" height="96" rx="15" fill="#e8eef7" transform="rotate(40 445 314)"/>
+      <rect x="430" y="266" width="30" height="96" rx="15" fill="none" stroke="#aebed4" stroke-width="2" transform="rotate(40 445 314)"/>
+
+      <!-- the bug under the lens -->
+      <g>
+        <ellipse cx="392" cy="232" rx="26" ry="30" fill="#ffb02e"/>
+        <path d="M392 204 v56" stroke="#7a4d05" stroke-width="3"/>
+        <circle cx="383" cy="222" r="4" fill="#5b3a04"/>
+        <circle cx="401" cy="222" r="4" fill="#5b3a04"/>
+        <circle cx="383" cy="242" r="4" fill="#5b3a04"/>
+        <circle cx="401" cy="242" r="4" fill="#5b3a04"/>
+        <!-- head + antennae -->
+        <circle cx="392" cy="200" r="9" fill="#5b3a04"/>
+        <path d="M386 193 l-8 -10 M398 193 l8 -10" stroke="#5b3a04" stroke-width="3" stroke-linecap="round"/>
+        <!-- legs -->
+        <path d="M366 218 l-16 -8 M366 232 l-18 0 M366 246 l-16 8" stroke="#5b3a04" stroke-width="3" stroke-linecap="round"/>
+        <path d="M418 218 l16 -8 M418 232 l18 0 M418 246 l16 8" stroke="#5b3a04" stroke-width="3" stroke-linecap="round"/>
+      </g>
+    </g>
+
+    <!-- little feet -->
+    <rect x="540" y="452" width="52" height="24" rx="12" fill="#cdd8e8"/>
+    <rect x="632" y="452" width="52" height="24" rx="12" fill="#cdd8e8"/>
+  </g>
+
+  <!-- ================= wordmark (only text) ================= -->
+  <text x="640" y="566" text-anchor="middle"
+        font-family="'Helvetica Neue', 'Arial', sans-serif"
+        font-size="78" font-weight="800" letter-spacing="2">
+    <tspan fill="#f0f4f9">debug</tspan><tspan fill="#38e1c9">master</tspan>
+  </text>
+</svg>

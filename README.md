@@ -1,9 +1,11 @@
 # debugmaster
 
 Rust-first bug hunter for agents and maintainers who need a fast, portable
-second opinion before code ships. `debugmaster` is a single binary that combines
-static rules, business-logic detectors, and Codex/Claude session search; the
-old Python command surface remains available through `debugmastery`.
+second opinion before code ships. One tool, one command: a native Rust core
+(`hunt`, `sessions`, `doctor`) plus a deeper analysis **engine bundled inside the
+tool** for everything else (`audit`, `review`, `profile`, `mcp`, `fusion`, …).
+The engine runs through `python3` — there is **no second tool to install**, no
+`pip`, no separate package on your `PATH`.
 
 Repository: https://github.com/Supersynergy/debugmaster
 
@@ -29,8 +31,14 @@ debugmaster hunt .              # ranked findings, human output
 debugmaster hunt . --json       # machine-readable report
 debugmaster hunt . -n 30        # top 30 findings
 debugmaster sessions -q codex   # search Codex/Claude JSONL sessions
-debugmaster doctor              # forwarded to debugmastery while being ported
+debugmaster doctor              # native: which layers (core + engine + scanners) are live
+debugmaster hunt . --deep       # full engine pipeline: fusion + git-history + learned ranking
+debugmaster audit .             # graded SHIP/FIX-FIRST/BLOCK verdict (bundled engine)
 ```
+
+`hunt` (native) is the fast Rust scan. `hunt --deep` and the deep commands run the
+bundled engine; both ship in this one repo. The native scan and the deep pipeline
+are an explicit choice, not two silently-diverging code paths.
 
 ## What It Finds
 
@@ -59,16 +67,20 @@ check, `construct_event`, explicit kwargs, server-side amount lookup, `Decimal`)
 
 ## Why Rust
 
-- **Distribution.** One static binary. No Python, no `pip`, no version drift in CI.
-- **True parallelism.** The repo scan is `rayon` over cores — no GIL, no process-pool
-  overhead (the Python build had to fork around the GIL).
+- **Distribution.** The native core is one static binary — no interpreter for
+  `hunt`/`sessions`/`doctor`. The deep engine ships *with* the tool and runs on
+  the system `python3`; nothing extra to `pip install`, no second tool on `PATH`.
+- **True parallelism.** The native scan is `rayon` over cores — no GIL, no
+  process-pool overhead.
 - **Exact spans.** tree-sitter gives real function/call boundaries, so the
   business-logic guards run on precise node text, not line heuristics.
 - **Session visibility.** `debugmaster sessions` reads `~/.codex/sessions` and
   `~/.claude/projects` JSONL transcripts directly, including nested Codex rollout
   paths.
-- **Parity bridge.** Python-era commands are still usable through the Rust binary:
-  unknown subcommands are forwarded to `debugmastery` with the same arguments.
+- **Bundled engine.** Deep commands run `engine/bin/debugmaster` (resolved from
+  `$DEBUGMASTER_ENGINE`, `~/.debugmaster/engine`, the source tree, or next to the
+  binary). The full Python pipeline — fusion, git-history, learned ranking,
+  profiler, MCP server — is carried inside this one repo, not a sibling project.
 
 ## Verification
 
@@ -79,20 +91,24 @@ cargo clippy --all-targets -- -D warnings
 debugmaster hunt . --json
 ```
 
-## Parity
+## Architecture
 
-Native Rust today: `hunt`, `sessions`.
+Native Rust (no interpreter): `hunt`, `sessions`, `doctor`.
 
-Forwarded through `debugmastery` today: `fusion`, `learn-feedback`, `learn-stats`,
-`scan-bugs`, `doctor`, `mcp`, `checks`, `watch`, `regress`, `profile`, `audit`,
-`review`, `bisect`, `explain`, `fix-verify`, `install-hooks`, `scan`, `repo`,
-`top-risk`, `codex-brief`, `catalog`, `engines`, `flows`, `init`,
-`engines-install`, `autofix`, `mine`, `batch`, `init-ci`, and `all`.
+Bundled engine (`engine/`, runs on `python3`, no separate install): `hunt --deep`,
+`fusion`, `learn-feedback`, `learn-stats`, `scan-bugs`, `mcp`, `checks`, `watch`,
+`regress`, `profile`, `audit`, `review`, `bisect`, `explain`, `fix-verify`,
+`install-hooks`, `scan`, `repo`, `top-risk`, `codex-brief`, `catalog`, `engines`,
+`flows`, `init`, `engines-install`, `autofix`, `mine`, `batch`, `init-ci`, `all`.
+
+Engine commands are not a separate binary — the Rust front-end resolves the
+bundled engine and runs it for you. `debugmaster doctor` reports whether the
+engine and `python3` are reachable.
 
 ## Release State
 
-- Current Rust release: `v0.8.0`
-- Previous Python line: preserved as `debugmastery`
+- Current release: `v0.9.0` — single tool; the former `debugmastery` Python
+  project is folded in as the bundled `engine/`.
 - Legacy backup branches:
   - `python-main-github-before-rust`
   - `python-main-gitea-before-rust`
