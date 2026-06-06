@@ -19,7 +19,7 @@ jobs:
     name: fmt + clippy + test + build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # rust-toolchain.toml pins the channel (1.96.0) + components.
       - name: Show toolchain
@@ -56,7 +56,7 @@ jobs:
     name: cargo-deny (advisories + licenses)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
