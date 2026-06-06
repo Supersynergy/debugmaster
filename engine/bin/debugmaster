@@ -24,8 +24,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))  # make the lib/ analysis package importable
 CATALOG = ROOT / "debugger-engines.json"
 TOOLS = ROOT / "tools.json"
-REPORTS = ROOT / "reports"
 TEMPLATES = ROOT / "templates"
+# Reports go next to the work, not inside the (now bundled) engine. Default to
+# the current working directory — where you run `debugmaster` is your repo —
+# overridable with DEBUGMASTER_REPORTS. Never write into the engine install.
+REPORTS = Path(os.environ.get("DEBUGMASTER_REPORTS") or Path.cwd() / ".debugmaster" / "reports")
 GENERATED_DIRS = {".git", ".grepgod", ".codegraph", ".debugmaster", ".repovista"}
 SKIP_DIRS = {
     "node_modules",
