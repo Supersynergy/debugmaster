@@ -2,6 +2,31 @@
 
 All notable changes to debugmaster are documented here. Semantic Versioning.
 
+## [0.9.2] — 2026-06-06
+
+Precision + speed fixes found by auditing a real 32k-LOC repo.
+
+### Fixed
+
+- **`secret-in-fallback` false positive.** `unwrap_or_else(|_| "http://localhost:8080")`
+  (a benign config default) no longer fires a critical "leaked secret". The trigger
+  now requires a real credential keyword and the guard drops loopback/host addresses
+  and credential-free URLs; a genuine `scheme://user:pass@host` still flags. Real
+  hardcoded-password fallbacks remain critical.
+- **`off-by-one-len` false positive.** Downgraded medium → **low** (it is a
+  line-level heuristic, not a proven bug) and guarded against the common safe
+  idioms — edit-distance / DP loops over a `len + 1` matrix (Levenshtein) used
+  `<= length` correctly. It no longer drives a grade or BLOCK.
+- **`bandit` blew the `fast` profile budget (~90s → ~1.3s).** The recursive walk
+  descended into nested `ai-sidecar/.venv` (torch/numpy/transformers ≈ 11k `.py`).
+  Excludes are now globs (`*/.venv/*`, `*/site-packages/*`, `*/node_modules/*`, …)
+  that match vendored trees at any depth, plus `-ll` (medium+ only) and a 45s cap.
+
+### Added
+
+- Engine regression tests for all three fixes (localhost-not-secret,
+  real-credential-still-flagged, Levenshtein-DP-is-low). 76 engine tests pass.
+
 ## [0.9.1] — 2026-06-06
 
 Default super-report + pipeline visibility.

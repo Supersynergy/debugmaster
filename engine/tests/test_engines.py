@@ -98,6 +98,57 @@ class TestBughunt(unittest.TestCase):
         self.assertIn("py-syntax-error", ids)
 
 
+class TestFalsePositiveGuards(unittest.TestCase):
+    """Regressions for FPs found auditing real repos (v0.9.2)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def test_localhost_fallback_is_not_a_secret(self):
+        # `unwrap_or_else(|_| "http://localhost:8080")` is a benign config default,
+        # not a leaked credential — must NOT fire a critical secret-in-fallback.
+        _write(
+            self.tmp,
+            "main.rs",
+            'let url = std::env::var("APP_URL")'
+            '.unwrap_or_else(|_| "http://localhost:8080".into());\n',
+        )
+        ids = {f.rule_id for f in bughunt.scan_repo(self.tmp)}
+        self.assertNotIn("secret-in-fallback", ids)
+
+    def test_real_credential_fallback_still_flagged(self):
+        # An actual hardcoded password fallback must still be critical.
+        _write(
+            self.tmp,
+            "creds.rs",
+            'let pw = std::env::var("DB_PASSWORD")'
+            '.unwrap_or_else(|_| "s3cr3t_password".into());\n',
+        )
+        hits = [
+            f for f in bughunt.scan_repo(self.tmp) if f.rule_id == "secret-in-fallback"
+        ]
+        self.assertTrue(hits, "real credential fallback must still flag")
+        self.assertEqual(hits[0].severity, "critical")
+
+    def test_levenshtein_dp_off_by_one_is_low_not_blocking(self):
+        # Edit-distance DP over a `len+1` matrix uses `<= length` correctly. The
+        # heuristic may still hint, but never at a grade/BLOCK-driving severity.
+        _write(
+            self.tmp,
+            "dist.js",
+            "function lev(a, b) {\n"
+            "  const m = Array.from({length: a.length + 1}, () => Array(b.length + 1).fill(0));\n"
+            "  for (let i = 0; i <= a.length; i++) m[i][0] = i;\n"
+            "  return m;\n"
+            "}\n",
+        )
+        offs = [f for f in bughunt.scan_repo(self.tmp) if f.rule_id == "off-by-one-len"]
+        self.assertTrue(
+            all(f.severity == "low" for f in offs),
+            f"off-by-one must be low severity, got {[f.severity for f in offs]}",
+        )
+
+
 class TestMetrics(unittest.TestCase):
     def test_python_cyclomatic_and_proxy(self):
         tmp = Path(tempfile.mkdtemp())

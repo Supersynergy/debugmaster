@@ -116,11 +116,27 @@ def run_ruff(repo, timeout):
     return out, {"tool": "ruff", "status": "ok", "count": len(out)}
 
 
+# Heavy/vendored trees that bandit's recursive walk must never descend into —
+# scanning a nested `ai-sidecar/.venv` (torch/numpy/transformers = 11k .py) is what
+# made the `fast` profile take ~90s. Globs (`*/x/*`) match these dirs at ANY depth;
+# root-anchored `./x` paths missed nested venvs/node_modules. (90s → ~1.3s measured.)
+_BANDIT_EXCLUDE = (
+    "*/.venv/*,*/venv/*,*/env/*,*/site-packages/*,*/node_modules/*,"
+    "*/target/*,*/dist/*,*/build/*,*/__pycache__/*,*/.git/*,*/.next/*,*/.cache/*"
+)
+# Bandit is one of the slowest scanners; in `fast` it must not dominate wall time.
+_BANDIT_TIMEOUT_CAP = 45
+
+
 def run_bandit(repo, timeout):
     if not common.have("bandit") or not _has_ext(repo, {".py"}):
         return [], {"tool": "bandit", "status": "skip"}
     cp = common.run(
-        ["bandit", "-r", "-f", "json", "-q", "."], cwd=repo, timeout=timeout
+        # `-x` skips vendored trees; `-ll` reports medium+ severity only (less work,
+        # higher signal); the timeout is capped so a big repo can't stall the run.
+        ["bandit", "-r", "-q", "-ll", "-x", _BANDIT_EXCLUDE, "-f", "json", "."],
+        cwd=repo,
+        timeout=min(timeout, _BANDIT_TIMEOUT_CAP),
     )
     out = []
     try:

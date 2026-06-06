@@ -286,16 +286,20 @@ RULES: list[Rule] = [
         fix="Remove before shipping.",
         cwe="CWE-489",
     ),
-    # Off-by-one / bounds heuristic
+    # Off-by-one / bounds heuristic.
+    # Line-level only — cannot prove an out-of-bounds without AST bounds analysis,
+    # and the idiom is CORRECT in edit-distance / DP code that allocates `len + 1`
+    # (Levenshtein, knapsack, prefix sums). Kept as a LOW-severity hint so it never
+    # drives a grade/BLOCK, and guarded against the common safe idioms.
     Rule(
         "off-by-one-len",
-        "<= against a length/size in a loop bound",
-        "medium",
+        "<= against a length/size in a loop bound (heuristic hint)",
+        "low",
         r"(<=|>=)\s*[\w.]*\.(length|len|size|count)\b|<=\s*len\s*\(",
         langs=ANY,
-        guard=r"//|#",
-        message="`<=` against length is a classic off-by-one / out-of-bounds.",
-        fix="Use `<` for index bounds, or confirm the inclusive bound is intended.",
+        guard=r"//|#|\+\s*1\b|\.fill\(|Array\(|new Array|matrix|\bdp\b|range\(",
+        message="`<=` against length — possible off-by-one. Safe in DP/`len+1` code; confirm the bound.",
+        fix="Use `<` for index bounds, or confirm the inclusive bound is intended (e.g. a `len+1` matrix).",
         cwe="CWE-193",
     ),
     # ── corpus-mined classes (SpeedTuning invariants + bug-class theory) ──────
@@ -310,12 +314,19 @@ RULES: list[Rule] = [
         cwe="CWE-489",
     ),
     Rule(
+        # Only real credentials are critical. A localhost/loopback or a plain URL
+        # with no embedded userinfo (`http://localhost:8080`) is a benign config
+        # default, not a leaked secret — those used to fire a false CRITICAL. The
+        # trigger now requires a credential keyword; the guard drops loopback/host
+        # addresses and credential-free URLs (a real `scheme://user:pass@host` keeps
+        # its `@` and is NOT guarded).
         "secret-in-fallback",
         "Credential baked into a default/fallback",
         "critical",
-        r"(?i)unwrap_or(_else)?\s*\(.*(password|secret|token|api[_-]?key|admin|root:|:5432|localhost:)",
+        r"(?i)unwrap_or(_else)?\s*\(.*(password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|aws_|bearer\s|root:[^/])",
         langs=frozenset({"rust"}),
-        message="A fallback value hardcodes a credential / infra address.",
+        guard=r"(?i)localhost|127\.0\.0\.1|0\.0\.0\.0|::1|example\.(com|org)|://[^@\"']*[\"']|changeme|dummy|placeholder|your[_-]",
+        message="A fallback value hardcodes a credential.",
         fix="Read from config/env; never default to a real secret.",
         cwe="CWE-798",
     ),
