@@ -130,6 +130,24 @@ class TestFalsePositiveGuards(unittest.TestCase):
         self.assertTrue(hits, "real credential fallback must still flag")
         self.assertEqual(hits[0].severity, "critical")
 
+    def test_null_check_is_not_loose_eq(self):
+        # `!= null` / `== null` is the idiomatic null-OR-undefined check, not a
+        # coercion bug; a real `x == 0` still flags.
+        _write(
+            self.tmp,
+            "a.ts",
+            "const ok = value != null;\n"
+            "const n = x == null;\n"
+            "const bug = count == 0 ? 'z' : 'n';\n",
+        )
+        hits = [
+            (f.file, f.line)
+            for f in bughunt.scan_repo(self.tmp)
+            if f.rule_id == "js-loose-eq"
+        ]
+        # exactly the `== 0` line (3) flags; the two null-idiom lines do not.
+        self.assertEqual([h[1] for h in hits], [3], f"unexpected loose-eq hits: {hits}")
+
     def test_levenshtein_dp_off_by_one_is_low_not_blocking(self):
         # Edit-distance DP over a `len+1` matrix uses `<= length` correctly. The
         # heuristic may still hint, but never at a grade/BLOCK-driving severity.

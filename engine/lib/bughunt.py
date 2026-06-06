@@ -157,9 +157,11 @@ RULES: list[Rule] = [
         "low",
         r"[^=!<>]([!=]=)[^=]",
         langs=frozenset({"javascript", "typescript"}),
-        guard=r"===|!==|//|/\*",
+        # `== null` / `!= null` is the idiomatic null-OR-undefined check (eslint
+        # `eqeqeq` allows `null`), not a coercion bug — guard it out.
+        guard=r"===|!==|//|/\*|[!=]=\s*null",
         message="`==`/`!=` coerce types (0 == '' , null == undefined).",
-        fix="Use `===` / `!==`.",
+        fix="Use `===` / `!==` (or `== null` only for the null/undefined check).",
         cwe="CWE-697",
     ),
     Rule(

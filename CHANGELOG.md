@@ -2,6 +2,21 @@
 
 All notable changes to debugmaster are documented here. Semantic Versioning.
 
+## [0.9.3] — 2026-06-07
+
+More precision fixes from auditing the same real repo.
+
+### Fixed
+- **`js-loose-eq` false positive on the null idiom.** `value != null` / `x == null`
+  is the idiomatic null-OR-undefined check (eslint `eqeqeq` allows `null`) and no
+  longer flags. A real `count == 0` still does.
+
+### Known limitation
+- `off-by-one-len` still hints (low) on correct edit-distance/DP loops (`<= len`
+  over a `len + 1` matrix) and `>= len` bounds guards. Line-level regex can't
+  distinguish these from real off-by-ones without false negatives; kept low so it
+  never drives a grade. AST bounds analysis would be the real fix.
+
 ## [0.9.2] — 2026-06-06
 
 Precision + speed fixes found by auditing a real 32k-LOC repo.
