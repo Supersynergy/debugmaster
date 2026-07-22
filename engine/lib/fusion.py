@@ -526,7 +526,7 @@ FAST = [
 DEEP = FAST + [run_semgrep, run_osv, run_vulture, run_clippy, run_golangci]
 
 
-def run(repo: Path, *, profile: str = "fast", timeout: int = 90) -> dict:
+def run(repo: Path, *, profile: str = "fast", timeout: int = 90, only_scanners: set[str] | None = None) -> dict:
     """Run installed scanners concurrently within a per-scanner time budget.
 
     Scanners are independent external processes, so they run in parallel on a thread
@@ -535,12 +535,20 @@ def run(repo: Path, *, profile: str = "fast", timeout: int = 90) -> dict:
     semgrep parallelise internally, concurrency is capped and each scanner's own
     thread pool is pinned via env (`common.thread_cap_env`): roughly
     `pool_workers × per_scanner_threads ≈ 75% of cores`. Each scanner gets the full
-    `timeout`; a hang/crash is caught and reported, never silently dropped."""
+    `timeout`; a hang/crash is caught and reported, never silently dropped.
+
+    If `only_scanners` is given (a set of function names like {"run_ruff", "run_bandit"}),
+    only those scanners run — used by `fusion --only <layer>` to scope fusion to a
+    feature layer."""
     import os
     import subprocess as _sp
     from concurrent.futures import ThreadPoolExecutor
 
     scanners = DEEP if profile == "deep" else FAST
+    if only_scanners is not None:
+        scanners = [fn for fn in scanners if fn.__name__ in only_scanners]
+        if not scanners:
+            return {"findings": [], "scanners": [], "profile": profile, "filtered": sorted(only_scanners)}
     budget = common.worker_count()  # ~75% of cores
     # split the budget between scanner-concurrency and each scanner's own threads
     per_scanner_threads = 2 if budget >= 4 else 1

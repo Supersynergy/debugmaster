@@ -272,6 +272,191 @@ TOP_FLOWS = [
     {"name": "fallback_no_grepgod", "trigger": "fresh machine, CI, Linux server without grepgod", "steps": ["use Python stdlib scanner", "detect stacks by markers/extensions", "run only installed safe checks", "skip unavailable engines cleanly"], "output": "portable report without hard dependency"},
 ]
 
+# Map the 25 feature_layers to tool categories in debugger-engines.json.
+# Used by `catalog --layer` and `route` so the knowledge base is queryable
+# by the same vocabulary `engines` advertises.
+LAYER_TO_CATEGORIES = {
+    "codegraph_callflow": {"codegraph", "callgraph"},
+    "repo_drift_preflight": {"repo_drift_preflight", "repo_mining"},
+    "runtime_debugger": {"runtime_debugger", "native_debugger", "python_debugger", "node_debugger", "async_debug"},
+    "trace_observability": {"python_trace", "go_trace", "syscall_trace", "library_trace", "record_replay"},
+    "performance_profile": {"performance_profile", "python_profile", "rust_profile", "go_profile"},
+    "test_failure_triage": {"test_triage", "property_testing", "rust_test", "go_test", "race_detector"},
+    "security_secret_dependency": {"cpg_security", "secret_scan", "dependency_scan"},
+    "language_stack_references": {"rust_static", "rust_ub", "go_static"},
+    "llm_agent_observability": {"llm_context", "llm_observability"},
+    "debug_ui": {"debug_ui", "browser_devtools"},
+    "reverse_engineering": {"native_debugger", "disassembler"},
+    "network_proxy": {"network_proxy", "mitm"},
+    "mobile_in_app_debug": {"mobile_debug"},
+    "browser_devtools": {"browser_devtools"},
+    "log_correlation": {"log_correlation"},
+    # layers without a dedicated tool category stay empty (no false matches)
+    "git_dirty_impact": set(),
+    "risk_static_analysis": set(),
+    "static_hidden_bug_engine": set(),
+    "tool_fusion_normalized_dedup": set(),
+    "git_history_defect_mining": set(),
+    "logical_cochange_coupling": set(),
+    "ml_risk_scoring_isolationforest": set(),
+    "blast_radius_reachability": set(),
+    "compounding_learning_loop_thompson": set(),
+    "test_gap_detection": set(),
+    "debug_flow_orchestration": set(),
+}
+
+# Map install groups (install-engines.sh --only) to the feature layers they
+# light up. Used by `engines-install --layer` so you can install by capability.
+LAYER_TO_INSTALL_GROUPS = {
+    "codegraph_callflow": ["fusion"],
+    "repo_drift_preflight": ["fusion"],
+    "runtime_debugger": ["native", "python-debug", "rust"],
+    "trace_observability": ["native", "python-debug"],
+    "performance_profile": ["native", "python-debug", "rust", "go"],
+    "test_failure_triage": ["python-debug", "rust", "go"],
+    "security_secret_dependency": ["fusion"],
+    "language_stack_references": ["rust", "go", "js", "python-debug"],
+    "llm_agent_observability": ["llm"],
+    "debug_ui": ["js", "native"],
+    "reverse_engineering": ["native"],
+    "network_proxy": ["native"],
+    "mobile_in_app_debug": ["js"],
+    "browser_devtools": ["js"],
+    "log_correlation": ["python-debug"],
+    "static_hidden_bug_engine": ["fusion", "rust", "go", "js"],
+    "risk_static_analysis": ["fusion", "rust", "go", "js"],
+    "tool_fusion_normalized_dedup": ["fusion"],
+}
+
+# Map scanner functions (in fusion.py) to feature layers, so `fusion --only`
+# runs just the scanners that belong to the requested layer.
+LAYER_TO_FUSION_SCANNERS = {
+    "security_secret_dependency": {"run_gitleaks", "run_osv", "run_semgrep"},
+    "risk_static_analysis": {"run_ruff", "run_bandit", "run_clippy", "run_golangci", "run_biome", "run_oxlint", "run_vulture"},
+    "static_hidden_bug_engine": {"run_ruff", "run_bandit", "run_clippy", "run_biome", "run_oxlint"},
+    "test_failure_triage": set(),  # no scanner in fusion maps to this
+    "language_stack_references": {"run_ruff", "run_clippy", "run_golangci", "run_biome", "run_oxlint"},
+    "tool_fusion_normalized_dedup": {"run_ruff", "run_bandit", "run_gitleaks", "run_shellcheck", "run_actionlint", "run_biome", "run_oxlint", "run_semgrep", "run_osv", "run_vulture", "run_clippy", "run_golangci"},
+}
+
+# Symptom → (flow names, tool categories, install groups) router.
+# `debugmaster route "<symptom>"` matches keywords and returns a plan.
+# Keywords are matched case-insensitive against the symptom string.
+SYMPTOM_ROUTES = [
+    {
+        "keywords": ["flaky", "nondeterministic", "race", "intermittent", "heisenbug"],
+        "flows": ["native_runtime_crash", "dirty_impact_debug"],
+        "categories": ["record_replay", "race_detector", "test_triage"],
+        "install_groups": ["native", "go", "rust"],
+        "commands": ["debugmaster hunt . --deep", "cargo test -- --show-output", "go test -race ./..."],
+        "note": "Flaky bugs → record/replay (rr) + race detector + test triage. Lock the failure with `debugmaster regress`.",
+    },
+    {
+        "keywords": ["crash", "panic", "segfault", "abort", "signal", "core dump", "undefined behavior", "ub "],
+        "flows": ["native_runtime_crash"],
+        "categories": ["runtime_debugger", "native_debugger", "rust_ub"],
+        "install_groups": ["native", "rust"],
+        "commands": ["debugmaster explain - --repo .", "cargo miri", "lldb -- ./target/debug/<bin>"],
+        "note": "Native crash → LLDB/GDB + miri for unsafe Rust. Pipe the stacktrace into `debugmaster explain`.",
+    },
+    {
+        "keywords": ["slow", "performance", "latency", "cpu", "hot path", "flamegraph", "bottleneck"],
+        "flows": ["stack_specific_verification"],
+        "categories": ["performance_profile", "python_profile", "rust_profile", "go_profile"],
+        "install_groups": ["native", "python-debug", "rust", "go"],
+        "commands": ["debugmaster profile -- <cmd>", "py-spy record -o profile.svg --pid <PID>", "cargo flamegraph --bin <bin>"],
+        "note": "Performance → profile first (`debugmaster profile`), then map hot path to source via `hunt --deep`.",
+    },
+    {
+        "keywords": ["memory", "leak", "oom", "rss", "vram", "unbounded"],
+        "flows": ["native_runtime_crash", "dirty_impact_debug"],
+        "categories": ["performance_profile", "python_profile", "runtime_debugger"],
+        "install_groups": ["native", "python-debug", "rust"],
+        "commands": ["debugmaster profile --pid <PID> --duration 30", "debugmaster hunt . --deep --class unbounded"],
+        "note": "Memory leak → `debugmaster profile --pid` (RSS/GPU sampling) + hunt for unbounded-queue findings.",
+    },
+    {
+        "keywords": ["secret", "credential", "api key", "token", "leak", "gitleaks"],
+        "flows": ["security_dependency_triage"],
+        "categories": ["cpg_security", "secret_scan", "dependency_scan"],
+        "install_groups": ["fusion"],
+        "commands": ["debugmaster fusion . --only security_secret_dependency", "debugmaster hunt . --class secret"],
+        "note": "Secret/credential → fusion with security layer + hunt secret-literal rule. Rotate any leaked value.",
+    },
+    {
+        "keywords": ["dependency", "supply chain", "cve", "advisory", "vulnerability", "osv"],
+        "flows": ["security_dependency_triage"],
+        "categories": ["dependency_scan", "cpg_security"],
+        "install_groups": ["fusion"],
+        "commands": ["debugmaster fusion . --only security_secret_dependency", "cargo deny check", "osv-scanner ."],
+        "note": "Supply-chain → osv-scanner + cargo-deny + gitleaks. `cargo deny check` gates RUSTSEC advisories.",
+    },
+    {
+        "keywords": ["api", "endpoint", "request", "500", "400", "backend", "server", "route"],
+        "flows": ["backend_request_trace"],
+        "categories": ["network_proxy", "runtime_debugger"],
+        "install_groups": ["native", "python-debug"],
+        "commands": ["debugmaster hunt . --deep", "debugmaster explain <trace> --repo ."],
+        "note": "Backend failure → reproduce with curl/hurl, inspect logs, `debugmaster explain` on the stacktrace.",
+    },
+    {
+        "keywords": ["ui", "frontend", "react", "vue", "svelte", "astro", "next", "css", "render", "layout"],
+        "flows": ["frontend_ui_regression"],
+        "categories": ["browser_devtools", "debug_ui"],
+        "install_groups": ["js"],
+        "commands": ["debugmaster hunt . --lang typescript,javascript", "npx playwright test --ui"],
+        "note": "Frontend → build/typecheck first, then Playwright/DevTools. Map component files to dirty impact.",
+    },
+    {
+        "keywords": ["test", "failing", "pytest", "cargo test", "go test", "regression"],
+        "flows": ["stack_specific_verification", "dirty_impact_debug"],
+        "categories": ["test_triage", "property_testing", "rust_test", "go_test"],
+        "install_groups": ["python-debug", "rust", "go"],
+        "commands": ["debugmaster bisect . --good <ref> --bad HEAD --test '<cmd>'", "debugmaster regress <file> <rule> <line>"],
+        "note": "Test failure → `debugmaster bisect` to find the first bad commit, `regress` to lock the fix.",
+    },
+    {
+        "keywords": ["merge", "conflict", "rebase", "syntax-aware", "mergiraf"],
+        "flows": ["one_command_repo_truth"],
+        "categories": [],
+        "install_groups": ["rust"],
+        "commands": ["just mergiraf-setup", "git merge <branch>"],
+        "note": "Merge conflicts → `just mergiraf-setup` registers syntax-aware merges (Rust/Python/TOML/MD/YAML/JSON/Bash).",
+    },
+    {
+        "keywords": ["context", "codex", "claude", "agent", "handoff", "brief", "ai"],
+        "flows": ["ai_handoff_compression"],
+        "categories": ["llm_context", "llm_observability"],
+        "install_groups": ["llm"],
+        "commands": ["debugmaster codex-brief .", "debugmaster audit . --json"],
+        "note": "AI handoff → `codex-brief` for a one-screen context + `audit --json` as the source of truth.",
+    },
+    {
+        "keywords": ["monorepo", "workspace", "package", "coupling", "shared"],
+        "flows": ["monorepo_boundary_map"],
+        "categories": ["codegraph", "callgraph"],
+        "install_groups": ["fusion"],
+        "commands": ["debugmaster repo . --suggest-flow", "debugmaster top-risk . -n 20"],
+        "note": "Monorepo → map package boundaries, rank shared modules by fan-in, fix the highest-impact package first.",
+    },
+    {
+        "keywords": ["fresh", "new repo", "unknown", "health", "overview", "triage"],
+        "flows": ["one_command_repo_truth"],
+        "categories": ["codegraph", "repo_mining"],
+        "install_groups": ["fusion"],
+        "commands": ["debugmaster repo . --suggest-flow", "debugmaster audit ."],
+        "note": "Unknown repo → `repo --suggest-flow` + `audit` for the full verdict.",
+    },
+    {
+        "keywords": ["ci", "github actions", "workflow", "actionlint", "pipeline"],
+        "flows": ["stack_specific_verification"],
+        "categories": ["test_triage"],
+        "install_groups": ["fusion"],
+        "commands": ["debugmaster fusion . --only security_secret_dependency", "actionlint .github/workflows/*.yml"],
+        "note": "CI → actionlint + fusion security layer. `init-ci` installs the PR report workflow.",
+    },
+]
+
 
 def run(
     cmd: list[str],
@@ -992,6 +1177,22 @@ def cmd_repo(args) -> int:
     if args.full and shutil.which("grepgod"):
         subprocess.run(["grepgod", "--chain", "map", str(repo)], check=False)
     h = health(repo)
+    if args.suggest_flow:
+        # Pick a flow based on repo state: dirty → dirty_impact_debug, else one_command_repo_truth.
+        sug = "dirty_impact_debug" if h.get("changed_files", 0) > 3 else "one_command_repo_truth"
+        flow = next((f for f in TOP_FLOWS if f["name"] == sug), TOP_FLOWS[0])
+        print(f"# Suggested flow: {flow['name']}\n")
+        print(f"Trigger: {flow['trigger']}\n")
+        print("Steps:")
+        for s in flow["steps"]:
+            print(f"  - {s}")
+        print(f"\nOutput: {flow['output']}\n")
+        print("```bash")
+        print("debugmaster audit .")
+        if h.get("changed_files", 0) > 3:
+            print("debugmaster top-risk . -n 20")
+        print("```")
+        return 0
     print(json.dumps(h, indent=2))
     return 0
 
@@ -1032,7 +1233,15 @@ def cmd_codex_brief(args) -> int:
 def cmd_catalog(args) -> int:
     data = load_json(CATALOG, {"tools": []})
     q = (args.query or "").lower()
+    layer = (args.layer or "").lower()
     rows = data.get("tools", [])
+    if layer:
+        cats = LAYER_TO_CATEGORIES.get(layer)
+        if cats is None:
+            print(f"unknown layer: {layer}", file=sys.stderr)
+            print(f"known layers: {', '.join(sorted(LAYER_TO_CATEGORIES))}", file=sys.stderr)
+            return 2
+        rows = [r for r in rows if r.get("category", "") in cats]
     if q:
         rows = [
             r for r in rows
@@ -1041,8 +1250,73 @@ def cmd_catalog(args) -> int:
             or q in r.get("best_feature", "").lower()
             or q in r.get("debugmaster_use", "").lower()
         ]
+    if args.json:
+        print(json.dumps({"layer": layer or None, "query": q or None, "count": len(rows), "tools": rows[: args.limit]}, indent=2))
+        return 0
     for r in rows[: args.limit]:
         print(f"{r['name']}\t{r['category']}\t{r['best_feature']}\t{r['debugmaster_use']}")
+    return 0
+
+
+def cmd_route(args) -> int:
+    """Symptom → recommended flows + tools + commands.
+
+    Matches the symptom string against SYMPTOM_ROUTES keywords (case-insensitive,
+    substring). Returns the first matching route, or a default triage route.
+    With --json, emits a machine-readable plan."""
+    symptom = (args.symptom or "").lower()
+    if not symptom:
+        print("usage: debugmaster route \"<symptom>\"  (e.g. 'flaky test', 'memory leak', 'secret in repo')", file=sys.stderr)
+        return 2
+    match = None
+    for r in SYMPTOM_ROUTES:
+        if any(kw in symptom for kw in r["keywords"]):
+            match = r
+            break
+    if match is None:
+        match = {
+            "keywords": [],
+            "flows": ["one_command_repo_truth", "dirty_impact_debug"],
+            "categories": [],
+            "install_groups": ["fusion"],
+            "commands": ["debugmaster repo . --suggest-flow", "debugmaster audit ."],
+            "note": "No specific symptom matched — default triage: repo health + audit.",
+        }
+    flows = [f for f in TOP_FLOWS if f["name"] in match["flows"]]
+    plan = {
+        "symptom": args.symptom,
+        "matched_keywords": [kw for kw in match["keywords"] if kw in symptom],
+        "flows": [{"name": f["name"], "trigger": f["trigger"], "steps": f["steps"], "output": f["output"]} for f in flows],
+        "tool_categories": match["categories"],
+        "install_groups": match["install_groups"],
+        "commands": match["commands"],
+        "note": match["note"],
+    }
+    if args.json:
+        print(json.dumps(plan, indent=2))
+        return 0
+    print(f"# Debugmaster Route — \"{args.symptom}\"\n")
+    if plan["matched_keywords"]:
+        print(f"Matched on: {', '.join(plan['matched_keywords'])}\n")
+    print(f"## Note\n{plan['note']}\n")
+    print("## Flows")
+    for f in plan["flows"]:
+        print(f"- **{f['name']}** — {f['trigger']}")
+        for s in f["steps"]:
+            print(f"  - {s}")
+        print(f"  → {f['output']}")
+    if plan["tool_categories"]:
+        print("\n## Tool categories")
+        for c in plan["tool_categories"]:
+            print(f"- {c}")
+    if plan["install_groups"]:
+        print("\n## Install if missing")
+        print(f"```bash\ndebugmaster engines-install --only {','.join(plan['install_groups'])}\n```")
+    print("\n## Commands")
+    print("```bash")
+    for c in plan["commands"]:
+        print(c)
+    print("```")
     return 0
 
 
@@ -1050,9 +1324,11 @@ def cmd_engines(_args) -> int:
     data = load_json(CATALOG, {"feature_layers": [], "tools": []})
     print(f"Feature layers: {len(data.get('feature_layers', []))}")
     for layer in data.get("feature_layers", []):
-        print(f"- {layer}")
+        count = len([t for t in data.get("tools", []) if t.get("category", "") in LAYER_TO_CATEGORIES.get(layer, set())])
+        print(f"- {layer}  ({count} tools)" if count else f"- {layer}")
     print(f"\nTools cataloged: {len(data.get('tools', []))}")
     print(f"Language/framework stacks: {len(LANGUAGE_MATRIX)}")
+    print(f"Symptom routes: {len(SYMPTOM_ROUTES)}  (try: debugmaster route \"flaky test\")")
     return 0
 
 
@@ -1092,11 +1368,24 @@ def cmd_init(args) -> int:
 def cmd_engines_install(args) -> int:
     """Onboard the optional best-in-class engine stack (biome, golangci-lint,
     py-spy, delve, …). Thin wrapper over install-engines.sh so `doctor` and the
-    installer speak the same group vocabulary."""
+    installer speak the same group vocabulary. --layer maps a feature_layer to
+    install groups via LAYER_TO_INSTALL_GROUPS."""
     script = ROOT / "install-engines.sh"
     if not script.exists():
         print(f"missing installer: {script}", file=sys.stderr)
         return 2
+    only = getattr(args, "only", "") or ""
+    layer = getattr(args, "layer", "") or ""
+    if layer and only:
+        print("--layer and --only are mutually exclusive", file=sys.stderr)
+        return 2
+    if layer:
+        groups = LAYER_TO_INSTALL_GROUPS.get(layer)
+        if not groups:
+            print(f"unknown layer: {layer}", file=sys.stderr)
+            print(f"known layers: {', '.join(sorted(LAYER_TO_INSTALL_GROUPS))}", file=sys.stderr)
+            return 2
+        only = ",".join(groups)
     cmd = ["bash", str(script)]
     if getattr(args, "yes", False):
         cmd.append("--yes")
@@ -1104,8 +1393,8 @@ def cmd_engines_install(args) -> int:
         cmd.append("--dry-run")
     if getattr(args, "list", False):
         cmd.append("--list")
-    if getattr(args, "only", None):
-        cmd += ["--only", args.only]
+    if only:
+        cmd += ["--only", only]
     return subprocess.run(cmd).returncode
 
 
@@ -1209,7 +1498,19 @@ def cmd_hunt(args) -> int:
 def cmd_fusion(args) -> int:
     from lib import fusion as _fusion
     repo = Path(args.repo).expanduser().resolve()
-    res = _fusion.run(repo, profile=args.profile, timeout=args.timeout)
+    only_layer = (getattr(args, "only", "") or "").strip()
+    if only_layer:
+        allowed = LAYER_TO_FUSION_SCANNERS.get(only_layer)
+        if allowed is None:
+            print(f"unknown layer: {only_layer}", file=sys.stderr)
+            print(f"known layers: {', '.join(sorted(LAYER_TO_FUSION_SCANNERS))}", file=sys.stderr)
+            return 2
+        if not allowed:
+            print(f"layer '{only_layer}' has no fusion scanners — use `hunt --deep` instead", file=sys.stderr)
+            return 0
+        res = _fusion.run(repo, profile=args.profile, timeout=args.timeout, only_scanners=allowed)
+    else:
+        res = _fusion.run(repo, profile=args.profile, timeout=args.timeout)
     deduped = _fusion.dedupe(res["findings"])
     print(json.dumps({
         "scanners": res["scanners"],
@@ -1412,6 +1713,7 @@ def main() -> int:
     fuse_p.add_argument("--profile", choices=["fast", "deep"], default="fast")
     fuse_p.add_argument("--timeout", type=int, default=90)
     fuse_p.add_argument("-n", "--limit", type=int, default=40)
+    fuse_p.add_argument("--only", default="", help="scope to a feature layer (e.g. security_secret_dependency, risk_static_analysis)")
     fuse_p.set_defaults(func=cmd_fusion)
 
     lf = sub.add_parser("learn-feedback", help="confirm/dismiss a finding to teach the ranker")
@@ -1523,6 +1825,7 @@ def main() -> int:
     repo = sub.add_parser("repo")
     repo.add_argument("repo")
     repo.add_argument("--full", action="store_true")
+    repo.add_argument("--suggest-flow", action="store_true", help="pick + print the right debug flow for this repo's state")
     repo.set_defaults(func=cmd_repo)
 
     risk = sub.add_parser("top-risk")
@@ -1535,10 +1838,17 @@ def main() -> int:
     brief.add_argument("-n", "--limit", type=int, default=12)
     brief.set_defaults(func=cmd_codex_brief)
 
-    catalog = sub.add_parser("catalog")
+    catalog = sub.add_parser("catalog", help="offline debugger knowledge base (111 tools, 25 layers)")
     catalog.add_argument("query", nargs="?")
     catalog.add_argument("-n", "--limit", type=int, default=30)
+    catalog.add_argument("--layer", default="", help="filter by feature layer (e.g. runtime_debugger, performance_profile)")
+    catalog.add_argument("--json", action="store_true")
     catalog.set_defaults(func=cmd_catalog)
+
+    route_p = sub.add_parser("route", help="symptom → recommended flows + tools + commands")
+    route_p.add_argument("symptom", help='e.g. "flaky test", "memory leak", "secret in repo", "slow API"')
+    route_p.add_argument("--json", action="store_true")
+    route_p.set_defaults(func=cmd_route)
 
     engines = sub.add_parser("engines")
     engines.set_defaults(func=cmd_engines)
@@ -1556,6 +1866,7 @@ def main() -> int:
     ei.add_argument("--dry-run", action="store_true", help="print the plan, install nothing")
     ei.add_argument("--list", action="store_true", help="list groups + tools, then exit")
     ei.add_argument("--only", default="", help="comma-separated groups: fusion,js,go,rust,python-debug,native,llm,ml")
+    ei.add_argument("--layer", default="", help="install by feature layer (e.g. runtime_debugger, performance_profile)")
     ei.set_defaults(func=cmd_engines_install)
 
     autofix = sub.add_parser("autofix", help="plan or apply safe low-risk fixes")

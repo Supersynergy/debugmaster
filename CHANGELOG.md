@@ -103,6 +103,54 @@ on `PATH`.
 
 ### Added
 
+- **`debugmaster route "<symptom>"`** — symptom→plan router. 14 symptom routes
+  (flaky, crash, slow, memory leak, secret, dependency, API, UI, test, merge,
+  AI handoff, monorepo, fresh repo, CI). Each returns matched flows + tool
+  categories + install groups + ready-to-run commands. `--json` for agents.
+  Default triage route when no keyword matches.
+- **`catalog --layer <name>`** — filter the 111-tool knowledge base by feature
+  layer. `--json` emits `{layer, query, count, tools}`. Unknown layers exit 2
+  with a list of valid layers.
+- **`engines-install --layer <name>`** — install by feature layer (maps to
+  install groups via `LAYER_TO_INSTALL_GROUPS`). `--layer` and `--only` are
+  mutually exclusive.
+- **`fusion --only <layer>`** — scope fusion to scanners that belong to a
+  feature layer (via `LAYER_TO_FUSION_SCANNERS`). `security_secret_dependency`
+  runs only gitleaks+osv+semgrep; `risk_static_analysis` runs the static
+  linters. Unknown layers exit 2.
+- **`repo --suggest-flow`** — picks + prints the right debug flow for the
+  repo's state (dirty → `dirty_impact_debug`, else `one_command_repo_truth`).
+- **`engines`** now shows per-layer tool counts (e.g. `runtime_debugger
+  (8 tools)`) and mentions `route` as the entrypoint.
+- Three knowledge-base tables (`LAYER_TO_CATEGORIES`,
+  `LAYER_TO_INSTALL_GROUPS`, `LAYER_TO_FUSION_SCANNERS`) unify the 25
+  feature_layers with tool categories, install groups, and fusion scanners —
+  so `catalog`, `engines-install`, and `fusion` all speak the same layer
+  vocabulary.
+
+### Changed
+
+- **Toolchain bump: Rust 1.96.0 → 1.97.0** (2026-07-07 release). `rust-version`
+  bumped to `1.97`. Verified clean: `cargo clippy --all-targets --all-features
+  -- -D warnings` clean, 21/21 nextest pass, `cargo deny check` clean, self-hunt
+  `src/` CLEAN. Edition 2024 unchanged.
+- Bumped to Rust 1.96.0 toolchain (edition 2024 unchanged). Verified: `cargo clippy
+  --release --all-targets --all-features -- -D warnings` clean, 15/15 tests pass.
+- Dependency updates: `tree-sitter` 0.25 → 0.26.9, `tree-sitter-python` 0.23 → 0.25.0
+  (both major bumps, no API breaks), `ignore` 0.4.25 → 0.4.26. Cargo 1.96 also
+  resolves CVE-2026-5222 / CVE-2026-5223.
+- `cargo update` (2026-07-22): `crossbeam-epoch` 0.9.18 → 0.9.20 (RUSTSEC-2026-0204
+  fix — invalid pointer deref in `fmt::Pointer` for `Atomic`/`Shared`), `clap`
+  4.6.1 → 4.6.4, `regex` 1.12.3 → 1.13.1, `serde` 1.0.228 → 1.0.229, `serde_json`
+  1.0.150 → 1.0.151, `syn` 2.0.117 → 3.0.3, `tree-sitter` 0.26.9 → 0.26.11, `ignore`
+  0.4.26 → 0.4.31, `bstr` 1.12.1 → 1.13.0, `memchr` 2.8.1 → 2.8.3, `cc` 1.2.63 →
+  1.3.0, `globset` 0.4.18 → 0.4.19, `crossbeam-deque` 0.8.6 → 0.8.7,
+  `crossbeam-utils` 0.8.21 → 0.8.22, `proc-macro2` 1.0.106 → 1.0.107, `quote`
+  1.0.45 → 1.0.47, `regex-automata` 0.4.14 → 0.4.16, `log` 0.4.32 → 0.4.33.
+  `cargo deny check` clean (advisories + bans + licenses + sources all ok).
+
+### Earlier in [Unreleased]
+
 - **CI** — `.github/workflows/ci.yml` (read by both GitHub and Gitea runners):
   fmt-check, clippy `-D warnings`, tests, release build, self-hunt dogfood, plus a
   `cargo-deny` job (advisories + licenses).

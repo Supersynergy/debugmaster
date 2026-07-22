@@ -25,8 +25,8 @@ Native Rust (no interpreter): hunt, sessions, doctor.
 Deep commands run the engine bundled inside this tool (needs python3, no second
 install): `hunt --deep`, audit, review, profile, mcp, watch, fusion, checks,
 regress, bisect, explain, fix-verify, install-hooks, scan-bugs, learn-feedback,
-learn-stats, scan, repo, top-risk, codex-brief, catalog, engines, flows, init,
-engines-install, autofix, mine, batch, init-ci, all."
+learn-stats, scan, repo, top-risk, codex-brief, catalog, engines, flows, route,
+init, engines-install, autofix, mine, batch, init-ci, all."
 )]
 struct Cli {
     #[command(subcommand)]
