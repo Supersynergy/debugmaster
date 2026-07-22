@@ -1,0 +1,14 @@
+# Syntax-aware git merges via mergiraf (cargo install mergiraf).
+# Run once per clone: `just mergiraf-setup` (or see CONTRIBUTING.md).
+* text=auto eol=lf
+
+# mergiraf handles these languages as syntax-aware (0.18 adds Bash/Scheme/Kotlin/Gleam).
+*.rs          merge=mergiraf
+*.py          merge=mergiraf
+*.toml        merge=mergiraf
+*.md          merge=mergiraf
+*.yml         merge=mergiraf
+*.yaml        merge=mergiraf
+*.json        merge=mergiraf
+*.sh          merge=mergiraf
+*.bash        merge=mergiraf

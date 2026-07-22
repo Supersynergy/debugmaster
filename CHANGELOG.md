@@ -113,14 +113,35 @@ on `PATH`.
 - **`AGENTS.md`** — build/verify/layout/convention guide for agents and contributors.
 - `justfile`: new `fmt`, `audit`, and `pre-pr` recipes; `ci` now runs
   `doctor` + full `check` (fmt + test + clippy + build + self-hunt).
+- **`just nextest`** — opt-in faster test runner (10-15% speedup on replays,
+  6% faster binary listing). `just check` auto-uses nextest when installed and
+  falls back to `cargo test` otherwise — no hard dep.
+- **`just mergiraf-setup`** — one-time per-clone: registers mergiraf 0.18 as the
+  syntax-aware git merge driver (new languages: Bash/Scheme/Kotlin/Gleam).
+  Idempotent. `.gitattributes` opts `.rs`/`.py`/`.toml`/`.md`/`.yml`/`.json`/`.sh`
+  into the driver.
+- **`.gitattributes`** — LF line endings + mergiraf merge driver for source files.
 
 ### Changed
 
+- **Toolchain bump: Rust 1.96.0 → 1.97.0** (2026-07-07 release). `rust-version`
+  bumped to `1.97`. Verified clean: `cargo clippy --all-targets --all-features
+  -- -D warnings` clean, 21/21 nextest pass, `cargo deny check` clean, self-hunt
+  `src/` CLEAN. Edition 2024 unchanged.
 - Bumped to Rust 1.96.0 toolchain (edition 2024 unchanged). Verified: `cargo clippy
   --release --all-targets --all-features -- -D warnings` clean, 15/15 tests pass.
 - Dependency updates: `tree-sitter` 0.25 → 0.26.9, `tree-sitter-python` 0.23 → 0.25.0
   (both major bumps, no API breaks), `ignore` 0.4.25 → 0.4.26. Cargo 1.96 also
   resolves CVE-2026-5222 / CVE-2026-5223.
+- `cargo update` (2026-07-22): `crossbeam-epoch` 0.9.18 → 0.9.20 (RUSTSEC-2026-0204
+  fix — invalid pointer deref in `fmt::Pointer` for `Atomic`/`Shared`), `clap`
+  4.6.1 → 4.6.4, `regex` 1.12.3 → 1.13.1, `serde` 1.0.228 → 1.0.229, `serde_json`
+  1.0.150 → 1.0.151, `syn` 2.0.117 → 3.0.3, `tree-sitter` 0.26.9 → 0.26.11, `ignore`
+  0.4.26 → 0.4.31, `bstr` 1.12.1 → 1.13.0, `memchr` 2.8.1 → 2.8.3, `cc` 1.2.63 →
+  1.3.0, `globset` 0.4.18 → 0.4.19, `crossbeam-deque` 0.8.6 → 0.8.7,
+  `crossbeam-utils` 0.8.21 → 0.8.22, `proc-macro2` 1.0.106 → 1.0.107, `quote`
+  1.0.45 → 1.0.47, `regex-automata` 0.4.14 → 0.4.16, `log` 0.4.32 → 0.4.33.
+  `cargo deny check` clean (advisories + bans + licenses + sources all ok).
 
 ### Fixed
 
@@ -131,6 +152,9 @@ on `PATH`.
 - `hunt` single-file scan: `walk::rel` now returns the file's basename instead of
   an empty string when the scanned path equals the root (single-file input). Every
   finding's `file` field is now non-empty regardless of invocation mode.
+- **RUSTSEC-2026-0204** — `crossbeam-epoch` 0.9.18 invalid pointer deref in
+  `fmt::Pointer` impls (pulled transitively via `rayon` + `ignore`). Fixed by
+  `cargo update -p crossbeam-epoch` → 0.9.20. `cargo deny check` now clean.
 
 ### Removed
 

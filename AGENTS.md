@@ -10,7 +10,7 @@ just check     # fmt --check + test + clippy -D warnings + release build + self-
 just pre-pr    # check + cargo-deny (advisories + licenses)
 ```
 
-Toolchain is pinned in `rust-toolchain.toml` (Rust 1.96.0). MSRV: 1.96.
+Toolchain is pinned in `rust-toolchain.toml` (Rust 1.97.0). MSRV: 1.97.
 Do not bump deps/toolchain without a green `just check`.
 
 ## Layout

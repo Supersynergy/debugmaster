@@ -14,6 +14,16 @@ fmt:
 test:
     cargo test
 
+# Faster test runner (10-15% speedup, binary listing 6% faster). Needs
+# `cargo install cargo-nextest`. Falls back to `cargo test` if not installed.
+nextest:
+    #!/usr/bin/env bash
+    if cargo nextest --version >/dev/null 2>&1; then
+        cargo nextest run --all-features
+    else
+        cargo test --all-features
+    fi
+
 lint:
     cargo clippy --all-targets --all-features -- -D warnings
 
@@ -35,17 +45,39 @@ audit:
 
 check:
     cargo fmt --all --check
-    cargo test
+    @just _test-runner
     cargo clippy --all-targets --all-features -- -D warnings
     cargo build --release
     # Dogfood the native scanner on our own Rust code. Scan `src/` — not the repo
     # root — because the bundled `engine/` ships planted-bug test fixtures.
     ./target/release/debugmaster hunt src --json
 
+# Internal: prefer nextest when installed, else cargo test.
+_test-runner:
+    #!/usr/bin/env bash
+    if cargo nextest --version >/dev/null 2>&1; then
+        cargo nextest run --all-features
+    else
+        cargo test --all-features
+    fi
+
 ci: doctor check
 
 # Pre-PR/release gate = ci + supply-chain audit.
 pre-pr: ci audit
+
+# One-time per-clone: enable syntax-aware git merges via mergiraf 0.18.
+# Needs `cargo install mergiraf`. Idempotent — safe to re-run.
+mergiraf-setup:
+    #!/usr/bin/env bash
+    if ! command -v mergiraf >/dev/null 2>&1; then
+        echo "mergiraf not installed — run: cargo install mergiraf" >&2
+        exit 1
+    fi
+    git config merge.mergiraf.name "syntax-aware merge (mergiraf)"
+    git config merge.mergiraf.driver "mergiraf merge --git %O %A %B -s %S -x %X -y %Y -l %P"
+    git config merge.mergiraf.recursionlimit 100
+    echo "mergiraf merge driver registered for this clone."
 
 preview:
     ./target/release/debugmaster --help
