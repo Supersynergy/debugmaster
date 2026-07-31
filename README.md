@@ -1,13 +1,9 @@
 # debugmaster
 
-Rust-first bug hunter for agents and maintainers who need a fast, portable
-second opinion before code ships. One tool, one command: a native Rust core
-(`hunt`, `sessions`, `doctor`) plus a deeper analysis **engine bundled inside the
-tool** for everything else (`audit`, `review`, `profile`, `mcp`, `fusion`, …).
-The engine runs through `python3` — there is **no second tool to install**, no
-`pip`, no separate package on your `PATH`.
-
-Repository: https://github.com/Supersynergy/debugmaster
+Finds the bugs a linter cannot see, because they are not syntax errors but wrong
+intent: an endpoint that loads a record by id and never checks who owns it, a
+charge amount read straight from the request body, a refund with no idempotency
+key. One command, one repo, machine-readable output for coding agents.
 
 ```bash
 cargo install --path .
@@ -21,7 +17,6 @@ git clone https://github.com/Supersynergy/debugmaster.git
 cd debugmaster
 cargo build --release
 ./target/release/debugmaster hunt .
-./target/release/debugmaster sessions -q codex
 ```
 
 Useful commands:
@@ -31,87 +26,82 @@ debugmaster hunt .              # ranked findings, human output
 debugmaster hunt . --json       # machine-readable report
 debugmaster hunt . -n 30        # top 30 findings
 debugmaster sessions -q codex   # search Codex/Claude JSONL sessions
-debugmaster doctor              # native: which layers (core + engine + scanners) are live
-debugmaster hunt . --deep       # full engine pipeline: fusion + git-history + learned ranking
-debugmaster audit .             # graded SHIP/FIX-FIRST/BLOCK verdict (bundled engine)
+debugmaster doctor              # which layers (core, engine, scanners) are live
+debugmaster hunt . --deep       # full pipeline: fusion, git-history, learned ranking
+debugmaster audit .             # graded SHIP/FIX-FIRST/BLOCK verdict
 ```
-
-`hunt` (native) is the fast Rust scan. `hunt --deep` and the deep commands run the
-bundled engine; both ship in this one repo. The native scan and the deep pipeline
-are an explicit choice, not two silently-diverging code paths.
 
 ## What It Finds
 
-The value isn't another syntax linter — it's the **business-logic** detectors that
-read *intent*, built on exact tree-sitter function/call spans + intent guards:
+The business-logic detectors read intent. They run on exact tree-sitter
+function and call spans, not on line heuristics.
 
 | Rule | Catches |
 |---|---|
-| `biz-idor-missing-ownership` | endpoint loads a record by id with no ownership/authz check |
-| `biz-mass-assignment` | `Model(**request.json)` — over-posting / privilege fields |
-| `biz-webhook-no-signature` | a webhook that never verifies the sender signature (forgeable events) |
-| `biz-client-controlled-price` | charge amount taken from the request (price tampering) |
-| `biz-refund-client-amount` | refund amount from the request (refund fraud) |
-| `biz-idempotency-missing` | a charge with no idempotency key (double-charge on retry) |
-| `biz-float-money` | money cast to float (precision loss) |
+| `biz-idor-missing-ownership` | endpoint loads a record by id with no ownership or authz check |
+| `biz-mass-assignment` | `Model(**request.json)`, over-posting into privilege fields |
+| `biz-webhook-no-signature` | a webhook that never verifies the sender signature, so events are forgeable |
+| `biz-client-controlled-price` | charge amount taken from the request, so the price can be tampered with |
+| `biz-refund-client-amount` | refund amount from the request, so refunds can be inflated |
+| `biz-idempotency-missing` | a charge with no idempotency key, so a retry double-charges |
+| `biz-float-money` | money cast to float, losing precision |
 
-Each detector is precise: it stays **silent** when the guard is present (ownership
-check, `construct_event`, explicit kwargs, server-side amount lookup, `Decimal`).
+Every detector stays silent once the guard is present: an ownership check,
+`construct_event`, explicit kwargs, a server-side amount lookup, `Decimal`.
+That is what keeps the report short enough to read.
 
 ## Static Rule Pack
 
 `secret-literal`, `sql-concat`, `py-shell-true`, `py-eval-exec`, `py-bare-except`,
 `py-eq-none`, `py-request-no-timeout`, `js-loose-eq`, `js-empty-catch`,
-`rust-unwrap`, `go-ignored-err`, `debug-leftover`. Languages by extension;
-`.gitignore`-aware walk; `guard` regexes keep false positives down.
+`rust-unwrap`, `go-ignored-err`, `debug-leftover`. Languages are picked by
+extension, the walk respects `.gitignore`, and `guard` regexes hold false
+positives down.
 
-## Why Rust
+## How It Is Built
 
-- **Distribution.** The native core is one static binary — no interpreter for
-  `hunt`/`sessions`/`doctor`. The deep engine ships *with* the tool and runs on
-  the system `python3`; nothing extra to `pip install`, no second tool on `PATH`.
-- **True parallelism.** The native scan is `rayon` over cores — no GIL, no
-  process-pool overhead.
-- **Exact spans.** tree-sitter gives real function/call boundaries, so the
-  business-logic guards run on precise node text, not line heuristics.
-- **Session visibility.** `debugmaster sessions` reads `~/.codex/sessions` and
-  `~/.claude/projects` JSONL transcripts directly, including nested Codex rollout
-  paths.
-- **Bundled engine.** Deep commands run `engine/bin/debugmaster` (resolved from
-  `$DEBUGMASTER_ENGINE`, `~/.debugmaster/engine`, the source tree, or next to the
-  binary). The full Python pipeline — fusion, git-history, learned ranking,
-  profiler, MCP server — is carried inside this one repo, not a sibling project.
+A Rust front-end over a Python analysis engine, shipped as one repository.
+
+`hunt`, `sessions` and `doctor` are native Rust: one static binary, no
+interpreter, `rayon` across cores with no GIL and no process-pool overhead.
+tree-sitter supplies real function and call boundaries, so the business-logic
+guards see precise node text.
+
+Everything deeper runs `engine/bin/debugmaster` on the system `python3`. The
+engine is carried inside this repository, not a sibling project, so there is no
+`pip install` and no second tool on your `PATH`. It is resolved from
+`$DEBUGMASTER_ENGINE`, `~/.debugmaster/engine`, the source tree, or the directory
+next to the binary. Run `debugmaster doctor` to see whether the engine and
+`python3` are reachable.
+
+By volume the project is mostly Python (the engine) with a Rust command layer on
+top. Splitting it that way is a deliberate choice, not two code paths drifting
+apart.
 
 ## Verification
 
 ```bash
 cargo build --release      # → target/release/debugmaster (single binary)
-cargo test                 # unit tests (detectors + FP guards)
+cargo test                 # unit tests: detectors and false-positive guards
 cargo clippy --all-targets -- -D warnings
 debugmaster hunt . --json
 ```
 
-## Architecture
+## Engine Commands
 
-Native Rust (no interpreter): `hunt`, `sessions`, `doctor`.
+`hunt --deep`, `fusion`, `learn-feedback`, `learn-stats`, `scan-bugs`, `mcp`,
+`checks`, `watch`, `regress`, `profile`, `audit`, `review`, `bisect`, `explain`,
+`fix-verify`, `install-hooks`, `scan`, `repo`, `top-risk`, `codex-brief`,
+`catalog`, `engines`, `flows`, `init`, `engines-install`, `autofix`, `mine`,
+`batch`, `init-ci`, `all`.
 
-Bundled engine (`engine/`, runs on `python3`, no separate install): `hunt --deep`,
-`fusion`, `learn-feedback`, `learn-stats`, `scan-bugs`, `mcp`, `checks`, `watch`,
-`regress`, `profile`, `audit`, `review`, `bisect`, `explain`, `fix-verify`,
-`install-hooks`, `scan`, `repo`, `top-risk`, `codex-brief`, `catalog`, `engines`,
-`flows`, `init`, `engines-install`, `autofix`, `mine`, `batch`, `init-ci`, `all`.
-
-Engine commands are not a separate binary — the Rust front-end resolves the
-bundled engine and runs it for you. `debugmaster doctor` reports whether the
-engine and `python3` are reachable.
+The Rust front-end resolves the bundled engine and runs these for you.
 
 ## Release State
 
-- Current release: `v0.9.0` — single tool; the former `debugmastery` Python
-  project is folded in as the bundled `engine/`.
-- Legacy backup branches:
-  - `python-main-github-before-rust`
-  - `python-main-gitea-before-rust`
+Current release `v0.9.0`. The former `debugmastery` Python project is folded in
+as the bundled `engine/`. Legacy backup branches:
+`python-main-github-before-rust`, `python-main-gitea-before-rust`.
 
 ## License
 
