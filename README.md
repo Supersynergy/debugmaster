@@ -7,8 +7,11 @@ key. One command, one repo, machine-readable output for coding agents.
 
 ```bash
 cargo install --path .
-debugmaster hunt .
+debugmaster .
 ```
+
+That bare command runs the full graded audit. `debugmaster hunt .` is the faster,
+narrower scan if you only want ranked findings.
 
 ## Quick Start
 
@@ -22,6 +25,7 @@ cargo build --release
 Useful commands:
 
 ```bash
+debugmaster .                   # full graded audit, the default since v0.9.1
 debugmaster hunt .              # ranked findings, human output
 debugmaster hunt . --json       # machine-readable report
 debugmaster hunt . -n 30        # top 30 findings
@@ -99,7 +103,7 @@ The Rust front-end resolves the bundled engine and runs these for you.
 
 ## Release State
 
-Current release `v0.9.0`. The former `debugmastery` Python project is folded in
+Current release `v0.9.3`. The former `debugmastery` Python project is folded in
 as the bundled `engine/`. Legacy backup branches:
 `python-main-github-before-rust`, `python-main-gitea-before-rust`.
 
